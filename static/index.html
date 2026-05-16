@@ -342,20 +342,6 @@ textarea:disabled { opacity: .55; cursor: not-allowed; }
 .detect-btn:disabled { opacity: .5; cursor: not-allowed; }
 .loc-coords { font-size: 11px; color: var(--text-muted); margin-top: 4px; min-height: 16px; }
 
-/* ── Debug trace ───────────────────────────────────────────────────────── */
-.debug-btn {
-  background: none; border: 1px solid var(--border); border-radius: 12px;
-  padding: 3px 10px; font-family: inherit; font-size: 11px; color: var(--text-muted);
-  cursor: pointer; transition: border-color .15s, color .15s; align-self: flex-start;
-  margin-top: 2px;
-}
-.debug-btn:hover { border-color: var(--accent); color: var(--accent); }
-.debug-panel {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-  padding: 8px 12px; font-size: 11px; display: flex; flex-direction: column; gap: 4px;
-  max-width: 340px; margin-top: 4px; box-shadow: var(--shadow);
-}
-.debug-step { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
 
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 .toast {
@@ -926,32 +912,6 @@ function appendMsg(role, text, isErr = false, debugLog = null) {
   bub.innerHTML = role === 'agent' ? renderMd(text) : esc(text);
   row.appendChild(bub);
   msgs.appendChild(row);
-
-  if (role === 'agent' && !isErr && debugLog && debugLog.length > 0) {
-    const dbgRow = el('div', 'row agent');
-    const dbgWrap = el('div', 'debug-wrap');
-    const dbgBtn = document.createElement('button');
-    dbgBtn.className = 'debug-btn';
-    dbgBtn.textContent = '▶ Debug trace';
-    const dbgPanel = el('div', 'debug-panel');
-    dbgPanel.style.display = 'none';
-    dbgPanel.innerHTML = debugLog.map(s =>
-      `<div class="debug-step">
-        <span class="step-check">✓</span>
-        <span class="step-lbl">${esc(s.label)}</span>
-        ${s.ms != null ? `<span class="step-ms">${s.ms}ms</span>` : ''}
-      </div>`
-    ).join('');
-    dbgBtn.onclick = () => {
-      const open = dbgPanel.style.display === 'none';
-      dbgPanel.style.display = open ? 'flex' : 'none';
-      dbgBtn.textContent = open ? '▼ Debug trace' : '▶ Debug trace';
-    };
-    dbgWrap.appendChild(dbgBtn);
-    dbgWrap.appendChild(dbgPanel);
-    dbgRow.appendChild(dbgWrap);
-    msgs.appendChild(dbgRow);
-  }
 
   scrollEnd();
 }

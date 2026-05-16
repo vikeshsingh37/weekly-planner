@@ -176,9 +176,10 @@ class WeeklyPlannerAgent:
         )
         langfuse_context.update_current_observation(
             model=MODEL,
-            usage_details={
+            usage={
                 "input": response.usage.input_tokens,
                 "output": response.usage.output_tokens,
+                "total": response.usage.input_tokens + response.usage.output_tokens,
             },
         )
         return response
