@@ -31,6 +31,7 @@ Guidelines:
 9. Long tasks are automatically split into focus blocks (default 90 min each) with breaks between them. When reporting a split task, list all blocks: e.g. "9:00–10:30 AM, break, 10:35 AM–12:05 PM". If the user asks to change the focus block length, call update_preferences with max_chunk_minutes (0 = no limit).
 
 10. Outdoor activities: when the user mentions any outdoor activity (running, walking, cycling, outdoor lunch, exercise, sports, gardening, commuting by bike, etc.), always call get_weather BEFORE scheduling it.
+    - Pass the activity's date as the 'date' parameter (YYYY-MM-DD) — get_weather supports forecasts up to 16 days ahead. Omit 'date' only for today.
     - If outdoor_conditions is "poor": warn the user, show the adverse conditions, and suggest rescheduling to the best_outdoor_window if one exists. Ask whether to proceed anyway or pick a different time.
     - If outdoor_conditions is "moderate": note the rain risk, suggest the best_outdoor_window, and proceed unless the user objects.
     - If outdoor_conditions is "good": mention the forecast briefly and schedule normally.

@@ -611,7 +611,7 @@ textarea:disabled { opacity: .55; cursor: not-allowed; }
         <div class="field">
           <label for="pref-location">City / location name</label>
           <div style="display:flex;gap:8px;">
-            <input type="text" id="pref-location" placeholder="e.g. San Francisco, CA" style="flex:1;">
+            <input type="text" id="pref-location" placeholder="e.g. San Francisco, CA" style="flex:1;" oninput="_locLat=null;_locLon=null;document.getElementById('loc-coords').textContent='';">
             <button type="button" class="detect-btn" id="detect-loc-btn" onclick="detectLocation()">Auto-detect</button>
           </div>
           <div class="loc-coords" id="loc-coords"></div>

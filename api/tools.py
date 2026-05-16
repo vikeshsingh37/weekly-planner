@@ -187,14 +187,23 @@ TOOL_DEFINITIONS: list[dict] = [
     {
         "name": "get_weather",
         "description": (
-            "Fetch today's weather forecast for the user's location via Open-Meteo. "
+            "Fetch the weather forecast for the user's location via Open-Meteo (up to 16 days ahead). "
             "Call this before scheduling any outdoor activity (running, walking, cycling, "
             "outdoor lunch, sports, gardening, etc.) to check conditions and find the best window. "
             "Returns hourly forecast for work hours, an overall outdoor conditions rating "
             "(good/moderate/poor), and the best outdoor time window. "
             "If location is not set, the tool returns an error — ask the user for their city."
         ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Date to fetch forecast for in YYYY-MM-DD format. Defaults to today if omitted.",
+                },
+            },
+            "required": [],
+        },
     },
 ]
 
