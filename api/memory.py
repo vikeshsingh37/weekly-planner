@@ -14,15 +14,23 @@ class AbstractSessionManager(ABC):
 
     @abstractmethod
     def add_task(self, task: Task) -> None:
-        """Upsert a task by name (case-insensitive)."""
+        """Add or replace a task. Deduplicates by task.id, not by name."""
 
     @abstractmethod
     def find_task(self, name: str) -> Optional[Task]:
-        """Return task with matching name (case-insensitive), or None."""
+        """Return first task matching name (case-insensitive), or None."""
+
+    @abstractmethod
+    def find_task_by_id(self, task_id: str) -> Optional[Task]:
+        """Return task with the given UUID, or None."""
 
     @abstractmethod
     def remove_task(self, name: str) -> bool:
-        """Remove task by name. Returns True if it existed."""
+        """Remove first task matching name (case-insensitive). Returns True if found."""
+
+    @abstractmethod
+    def remove_task_by_id(self, task_id: str) -> bool:
+        """Remove task with the given UUID. Returns True if found."""
 
     @abstractmethod
     def replace_tasks(self, tasks: list[Task]) -> None:
@@ -47,3 +55,6 @@ class AbstractSessionManager(ABC):
     @abstractmethod
     def reset(self) -> None:
         """Clear all state (used in tests and /reset commands)."""
+
+    def reload(self) -> None:
+        """Re-read state from durable storage. No-op for in-memory implementations."""

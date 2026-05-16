@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import logging
 import sys
 
 from evals.eval_runner import run_all
@@ -19,15 +20,19 @@ CATEGORIES = sorted({c.category for c in ALL_CASES})
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run daily planner eval suite")
+    parser = argparse.ArgumentParser(description="Run weekly planner eval suite")
     parser.add_argument("--category", choices=CATEGORIES, help="Run only one category")
     parser.add_argument("--verbose", action="store_true", help="Show agent tool calls")
     parser.add_argument("--output", default=None, help="Path to write JSON report")
     args = parser.parse_args()
 
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(message)s",
+    )
+
     categories = [args.category] if args.category else None
     report = run_all(
-        verbose=args.verbose,
         output_file=args.output,
         categories=categories,
     )

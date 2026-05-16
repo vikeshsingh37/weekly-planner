@@ -6,6 +6,7 @@ Results are printed to stdout and optionally written to a JSON file.
 """
 
 import json
+import logging
 import os
 import sys
 import time
@@ -13,10 +14,12 @@ import traceback
 from dataclasses import dataclass, asdict
 from typing import List, Optional
 
-from agent.agent import DailyPlannerAgent
+from agent.agent import WeeklyPlannerAgent
 from impl.memory import JSONSessionManager
 from impl.tools import ToolRunner
 from evals.test_cases import EvalCase, ALL_CASES
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,10 +40,10 @@ class CaseResult:
     error: Optional[str] = None
 
 
-def run_case(case: EvalCase, verbose: bool = False) -> CaseResult:
+def run_case(case: EvalCase) -> CaseResult:
     """Run one eval case in an isolated agent with a fresh session."""
     session = JSONSessionManager(session_file=None)
-    agent = DailyPlannerAgent(session=session, tools=ToolRunner(), verbose=verbose)
+    agent = WeeklyPlannerAgent(session=session, tools=ToolRunner())
 
     # Apply preference overrides if any
     if case.preferences:
@@ -52,12 +55,10 @@ def run_case(case: EvalCase, verbose: bool = False) -> CaseResult:
 
     try:
         for turn in case.turns:
-            if verbose:
-                print(f"    User: {turn[:80]}")
+            logger.debug("    User: %s", turn[:80])
             response = agent.chat(turn)
             responses.append(response)
-            if verbose:
-                print(f"    Agent: {response[:120]}")
+            logger.debug("    Agent: %s", response[:120])
     except Exception as e:
         error = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
 
@@ -92,7 +93,6 @@ def run_case(case: EvalCase, verbose: bool = False) -> CaseResult:
 
 def run_all(
     cases: List[EvalCase] = None,
-    verbose: bool = False,
     output_file: Optional[str] = None,
     categories: Optional[List[str]] = None,
 ) -> dict:
@@ -100,36 +100,35 @@ def run_all(
     if categories:
         cases = [c for c in cases if c.category in categories]
 
-    print(f"\n{'='*60}")
-    print(f"Daily Planner Agent — Eval Suite")
-    print(f"Running {len(cases)} cases")
-    print(f"{'='*60}\n")
+    logger.info("\n%s", "=" * 60)
+    logger.info("Weekly Planner Agent — Eval Suite")
+    logger.info("Running %d cases", len(cases))
+    logger.info("%s\n", "=" * 60)
 
     results: List[CaseResult] = []
     by_category: dict = {}
 
     for case in cases:
-        print(f"  [{case.category}] {case.name} ... ", end="", flush=True)
-        result = run_case(case, verbose=verbose)
+        result = run_case(case)
         results.append(result)
 
         status = "PASS" if result.passed else "FAIL"
-        print(f"{status} ({result.duration_seconds}s)")
+        logger.info("  [%s] %s ... %s (%ss)", case.category, case.name, status, result.duration_seconds)
 
         if not result.passed:
             for cr in result.checks:
                 if not cr.passed:
                     err_str = f" [{cr.error}]" if cr.error else ""
-                    print(f"    ✗ {cr.description}{err_str}")
-        if result.error and verbose:
-            print(f"    ERROR: {result.error[:300]}")
+                    logger.info("    ✗ %s%s", cr.description, err_str)
+        if result.error:
+            logger.debug("    ERROR: %s", result.error[:300])
 
         by_category.setdefault(result.category, []).append(result)
 
     # ── Summary ────────────────────────────────────────────────────────────────
-    print(f"\n{'='*60}")
-    print("RESULTS BY CATEGORY")
-    print(f"{'='*60}")
+    logger.info("\n%s", "=" * 60)
+    logger.info("RESULTS BY CATEGORY")
+    logger.info("%s", "=" * 60)
 
     total_pass = 0
     total_cases = len(results)
@@ -141,16 +140,22 @@ def run_all(
         pct = n_pass / n_total * 100
         category_scores[cat] = {"passed": n_pass, "total": n_total, "pct": round(pct, 1)}
         total_pass += n_pass
-        print(f"  {cat:<25} {n_pass}/{n_total} ({pct:.0f}%)")
+        logger.info("  %-25s %d/%d (%.0f%%)", cat, n_pass, n_total, pct)
 
     overall_pct = total_pass / total_cases * 100 if total_cases else 0
-    print(f"\n  {'OVERALL':<25} {total_pass}/{total_cases} ({overall_pct:.0f}%)")
+    logger.info("\n  %-25s %d/%d (%.0f%%)", "OVERALL", total_pass, total_cases, overall_pct)
 
     # Per-check breakdown
     total_checks = sum(len(r.checks) for r in results)
     passed_checks = sum(sum(1 for c in r.checks if c.passed) for r in results)
-    print(f"  {'Check-level':<25} {passed_checks}/{total_checks} ({passed_checks/total_checks*100:.0f}%)")
-    print(f"{'='*60}\n")
+    logger.info(
+        "  %-25s %d/%d (%.0f%%)",
+        "Check-level",
+        passed_checks,
+        total_checks,
+        passed_checks / total_checks * 100 if total_checks else 0,
+    )
+    logger.info("%s\n", "=" * 60)
 
     report = {
         "summary": {
@@ -179,6 +184,6 @@ def run_all(
         os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
         with open(output_file, "w") as f:
             json.dump(report, f, indent=2)
-        print(f"Report written to: {output_file}")
+        logger.info("Report written to: %s", output_file)
 
     return report

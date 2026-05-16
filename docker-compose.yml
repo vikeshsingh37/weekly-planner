@@ -1,0 +1,44 @@
+# Local Langfuse observability stack.
+#
+# Start:  docker compose up -d
+# UI:     http://localhost:3000
+# Stop:   docker compose down
+#
+# After starting, open http://localhost:3000 and:
+#   1. Create an account (local only, no internet required)
+#   2. Create a project
+#   3. Copy the Public Key and Secret Key into .env
+
+services:
+  langfuse:
+    image: langfuse/langfuse:2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@postgres:5432/langfuse
+      NEXTAUTH_SECRET: local-dev-secret-change-for-prod
+      SALT: local-dev-salt-change-for-prod
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db:/var/lib/postgresql/data
+
+volumes:
+  langfuse_db:

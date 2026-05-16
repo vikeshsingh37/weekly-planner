@@ -11,6 +11,7 @@ class AbstractScheduler(ABC):
         self,
         tasks: list[Task],
         preferences: Preferences,
+        now_min: int | None = None,
     ) -> ScheduleResult:
         """
         Assign time slots to tasks in-place and return a ScheduleResult.

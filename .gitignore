@@ -7,3 +7,6 @@ sessions/
 dist/
 build/
 .DS_Store
+
+.claude/
+data/

@@ -27,20 +27,30 @@ class JSONSessionManager(AbstractSessionManager):
         return self._state
 
     def add_task(self, task: Task) -> None:
-        self._state.tasks = [
-            t for t in self._state.tasks if t.name.lower() != task.name.lower()
-        ]
+        """Deduplicates by task.id — same-name tasks are allowed to coexist."""
+        self._state.tasks = [t for t in self._state.tasks if t.id != task.id]
         self._state.tasks.append(task)
 
     def find_task(self, name: str) -> Optional[Task]:
+        """Return the first task matching name (case-insensitive), or None."""
         nl = name.lower()
         return next((t for t in self._state.tasks if t.name.lower() == nl), None)
 
+    def find_task_by_id(self, task_id: str) -> Optional[Task]:
+        return next((t for t in self._state.tasks if t.id == task_id), None)
+
     def remove_task(self, name: str) -> bool:
+        """Remove the first task matching name. Returns True if one was found."""
+        nl = name.lower()
+        for i, t in enumerate(self._state.tasks):
+            if t.name.lower() == nl:
+                self._state.tasks.pop(i)
+                return True
+        return False
+
+    def remove_task_by_id(self, task_id: str) -> bool:
         before = len(self._state.tasks)
-        self._state.tasks = [
-            t for t in self._state.tasks if t.name.lower() != name.lower()
-        ]
+        self._state.tasks = [t for t in self._state.tasks if t.id != task_id]
         return len(self._state.tasks) < before
 
     def replace_tasks(self, tasks: list[Task]) -> None:
@@ -64,6 +74,10 @@ class JSONSessionManager(AbstractSessionManager):
         os.makedirs(os.path.dirname(os.path.abspath(self._file)), exist_ok=True)
         with open(self._file, "w") as f:
             json.dump(self._state.model_dump(), f, indent=2)
+
+    def reload(self) -> None:
+        if self._file and os.path.exists(self._file):
+            self._load()
 
     def reset(self) -> None:
         self._state = SessionState()
