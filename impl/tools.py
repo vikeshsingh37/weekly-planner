@@ -77,7 +77,13 @@ class ToolRunner(AbstractToolRunner):
                     f"{_MAX_PLANNING_DAYS}-day planning window; max allowed: {max_date})"
                 )
                 continue
-            task = Task(**{**ti.model_dump(), "date": ti.date or base_date})
+            task = Task(**{**ti.model_dump(exclude={"start_time"}), "date": ti.date or base_date})
+            if ti.start_time:
+                start_min = _to_min(ti.start_time)
+                task.scheduled_start = ti.start_time
+                task.scheduled_end = _to_hhmm(start_min + task.duration_minutes)
+                task.pinned = True
+                task.status = "scheduled"
             session.add_task(task)
             added.append(task.name)
 
@@ -86,7 +92,7 @@ class ToolRunner(AbstractToolRunner):
             added_tasks=added,
             rejected_tasks=rejected,
             total_tasks=len(session.state.tasks),
-            note="Call schedule_tasks to assign time slots.",
+            note="Call schedule_tasks to assign time slots for any unpinned tasks.",
         ).model_dump()
 
     def _schedule_tasks(
@@ -202,7 +208,6 @@ class ToolRunner(AbstractToolRunner):
                 return {"error": f"Task '{validated.task_name}' not found."}
             removed_name = task.name
             session.remove_task(validated.task_name)
-        session.save()
         return RemoveTaskOutput(
             removed=removed_name,
             remaining_tasks=len(session.state.tasks),

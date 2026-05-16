@@ -14,13 +14,15 @@ import json
 import logging
 import os
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import anthropic
 from dotenv import load_dotenv
 
-from agent.config import MAX_LOOP_ITERATIONS, MAX_TOKENS, MODEL, SYSTEM_PROMPT
+from agent.config import MAX_LOOP_ITERATIONS, MAX_TOKENS, MODEL, SYSTEM_PROMPT, TEMPERATURE, THINKING_TYPE, \
+    THINKING_EFFORT
 from api.memory import AbstractSessionManager
 from api.tools import AbstractToolRunner, TOOL_DEFINITIONS
 
@@ -123,18 +125,16 @@ class WeeklyPlannerAgent:
 
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
-                tool_results = []
-                for block in response.content:
-                    if block.type != "tool_use":
-                        continue
-                    logger.debug("  [tool] %s(%s)", block.name, json.dumps(block.input)[:100])
-                    result = self._run_tool(block.name, block.input)
-                    logger.debug("  [result] %s", json.dumps(result)[:200])
-                    tool_results.append({
+                tool_blocks = [b for b in response.content if b.type == "tool_use"]
+                results_map = self._run_tools_parallel(tool_blocks)
+                tool_results = [
+                    {
                         "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result),
-                    })
+                        "tool_use_id": b.id,
+                        "content": json.dumps(results_map[b.id]),
+                    }
+                    for b in tool_blocks
+                ]
                 messages.append({"role": "user", "content": tool_results})
                 continue
 
@@ -146,6 +146,21 @@ class WeeklyPlannerAgent:
             "Please try breaking your request into smaller parts."
         )
 
+    def _run_tools_parallel(self, tool_blocks: list) -> dict:
+        """Run all tool blocks concurrently. Session-level locking ensures state safety."""
+        def run_one(block):
+            logger.debug("  [tool] %s(%s)", block.name, json.dumps(block.input)[:100])
+            result = self._run_tool(block.name, block.input)
+            logger.debug("  [result] %s", json.dumps(result)[:200])
+            return block.id, result
+
+        if len(tool_blocks) == 1:
+            bid, result = run_one(tool_blocks[0])
+            return {bid: result}
+
+        with ThreadPoolExecutor(max_workers=min(len(tool_blocks), 4)) as executor:
+            return dict(executor.map(run_one, tool_blocks))
+
     @observe(as_type="generation")
     def _call_llm(self, messages: list, system: str):
         """Single Anthropic API call — traced as a Langfuse generation with token usage."""
@@ -155,6 +170,9 @@ class WeeklyPlannerAgent:
             system=system,
             tools=TOOL_DEFINITIONS,
             messages=messages,
+            temperature=TEMPERATURE,
+            thinking={"type": THINKING_TYPE},
+            output_config={"effort": THINKING_EFFORT}
         )
         langfuse_context.update_current_observation(
             model=MODEL,

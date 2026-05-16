@@ -53,6 +53,14 @@ TOOL_DEFINITIONS: list[dict] = [
                                     "Use for tasks on a specific future day."
                                 ),
                             },
+                            "start_time": {
+                                "type": "string",
+                                "description": (
+                                    "Fixed start time HH:MM (24h). "
+                                    "Set this when the user specifies an exact time (e.g. standup at 09:30). "
+                                    "The task will be pinned at this time; schedule_tasks will fit remaining tasks around it."
+                                ),
+                            },
                         },
                         "required": ["name", "duration_minutes", "priority"],
                     },

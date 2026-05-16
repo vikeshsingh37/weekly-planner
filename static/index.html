@@ -170,9 +170,9 @@ html, body {
 }
 textarea {
   flex: 1; padding: 9px 13px; border: 1.5px solid var(--border);
-  border-radius: 22px; font-family: inherit; font-size: 15px; line-height: 1.5;
+  border-radius: 16px; font-family: inherit; font-size: 15px; line-height: 1.5;
   resize: none; outline: none; background: var(--bg); color: var(--text);
-  max-height: 160px; overflow-y: auto; transition: border-color .15s;
+  min-height: 72px; max-height: 160px; overflow-y: auto; transition: border-color .15s;
 }
 textarea:focus { border-color: var(--accent); background: #fff; }
 textarea::placeholder { color: var(--text-muted); }
@@ -342,6 +342,21 @@ textarea:disabled { opacity: .55; cursor: not-allowed; }
 .detect-btn:disabled { opacity: .5; cursor: not-allowed; }
 .loc-coords { font-size: 11px; color: var(--text-muted); margin-top: 4px; min-height: 16px; }
 
+/* ── Debug trace ───────────────────────────────────────────────────────── */
+.debug-btn {
+  background: none; border: 1px solid var(--border); border-radius: 12px;
+  padding: 3px 10px; font-family: inherit; font-size: 11px; color: var(--text-muted);
+  cursor: pointer; transition: border-color .15s, color .15s; align-self: flex-start;
+  margin-top: 2px;
+}
+.debug-btn:hover { border-color: var(--accent); color: var(--accent); }
+.debug-panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 11px; display: flex; flex-direction: column; gap: 4px;
+  max-width: 340px; margin-top: 4px; box-shadow: var(--shadow);
+}
+.debug-step { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
+
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -452,11 +467,6 @@ textarea:disabled { opacity: .55; cursor: not-allowed; }
       </svg>
       Calendar
     </button>
-    <button class="hdr-icon-btn" onclick="openSettings()" title="Settings">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-    </button>
     <!-- Logged-in user + sign-out -->
     <button class="hdr-btn" id="user-btn" onclick="logout()" title="Sign out">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -495,7 +505,7 @@ textarea:disabled { opacity: .55; cursor: not-allowed; }
         </div>
       </div>
       <div class="input-bar">
-        <textarea id="inp" rows="1" placeholder="Describe your tasks, ask to reschedule, or say what's on your plate this week… (Enter to send)"></textarea>
+        <textarea id="inp" rows="3" placeholder="Describe your tasks, ask to reschedule, or say what's on your plate this week… (Enter to send)"></textarea>
         <button class="send" id="send" onclick="send()" title="Send (Enter)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -519,6 +529,11 @@ textarea:disabled { opacity: .55; cursor: not-allowed; }
           <button class="cal-nav-btn" onclick="navCalendar(1)" title="Next period">›</button>
           <button class="cal-nav-btn cal-nav-today" onclick="navCalendar(0)" title="Jump to today">Today</button>
           <span class="cal-tz" id="cal-tz"></span>
+          <button class="cal-nav-btn" onclick="openSettings()" title="Settings" style="width:28px;height:28px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
         </div>
         <div class="cal-week" id="cal-week"></div>
       </div>
@@ -786,7 +801,9 @@ let _locLat = null, _locLon = null;
 let _calViewOffset = 0;
 let _lastState = null;
 
-const PX_PER_MIN = 1.0;
+const PX_PER_MIN    = 1.5;
+const CAL_DAY_START = 0;          // 12 AM — top of visible calendar
+const CAL_DAY_END   = 24 * 60;   // 12 AM next day — bottom of visible calendar
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -828,8 +845,9 @@ function handle(msg) {
   } else if (msg.type === 'tool_end') {
     doneStep(msg.label);
   } else if (msg.type === 'response') {
+    const log = [...stepLog];
     collapseThinking();
-    appendMsg('agent', msg.text);
+    appendMsg('agent', msg.text, false, log);
     idle();
     refreshCalendar();
   } else if (msg.type === 'error') {
@@ -901,13 +919,40 @@ function collapseThinking() {
 }
 
 // ── Messages ───────────────────────────────────────────────────────────
-function appendMsg(role, text, isErr = false) {
+function appendMsg(role, text, isErr = false, debugLog = null) {
   hideWelcome();
   const row = el('div', `row ${role}`);
   const bub = el('div', isErr ? 'bubble err' : 'bubble');
   bub.innerHTML = role === 'agent' ? renderMd(text) : esc(text);
   row.appendChild(bub);
   msgs.appendChild(row);
+
+  if (role === 'agent' && !isErr && debugLog && debugLog.length > 0) {
+    const dbgRow = el('div', 'row agent');
+    const dbgWrap = el('div', 'debug-wrap');
+    const dbgBtn = document.createElement('button');
+    dbgBtn.className = 'debug-btn';
+    dbgBtn.textContent = '▶ Debug trace';
+    const dbgPanel = el('div', 'debug-panel');
+    dbgPanel.style.display = 'none';
+    dbgPanel.innerHTML = debugLog.map(s =>
+      `<div class="debug-step">
+        <span class="step-check">✓</span>
+        <span class="step-lbl">${esc(s.label)}</span>
+        ${s.ms != null ? `<span class="step-ms">${s.ms}ms</span>` : ''}
+      </div>`
+    ).join('');
+    dbgBtn.onclick = () => {
+      const open = dbgPanel.style.display === 'none';
+      dbgPanel.style.display = open ? 'flex' : 'none';
+      dbgBtn.textContent = open ? '▼ Debug trace' : '▶ Debug trace';
+    };
+    dbgWrap.appendChild(dbgBtn);
+    dbgWrap.appendChild(dbgPanel);
+    dbgRow.appendChild(dbgWrap);
+    msgs.appendChild(dbgRow);
+  }
+
   scrollEnd();
 }
 
@@ -1012,7 +1057,7 @@ function renderCalendar(state) {
   const planDays    = Math.max(1, prefs.planning_days || 1);
   const wsMin       = toMin(prefs.work_start);
   const weMin       = toMin(prefs.work_end);
-  const totalPx     = (weMin - wsMin) * PX_PER_MIN;
+  const totalPx     = (CAL_DAY_END - CAL_DAY_START) * PX_PER_MIN;
   const todayStr    = new Date().toLocaleDateString('en-CA');
   const COLORS      = ['', '#94a3b8', '#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
 
@@ -1064,10 +1109,10 @@ function renderCalendar(state) {
   const timeCol = document.createElement('div');
   timeCol.className = 'cal-time-col';
   timeCol.style.height = totalPx + 'px';
-  for (let m = wsMin; m <= weMin; m += 60) {
+  for (let m = CAL_DAY_START; m <= CAL_DAY_END; m += 60) {
     const lbl = document.createElement('div');
     lbl.className = 'cal-time-lbl';
-    lbl.style.top = ((m - wsMin) * PX_PER_MIN) + 'px';
+    lbl.style.top = ((m - CAL_DAY_START) * PX_PER_MIN) + 'px';
     lbl.textContent = toAmPm(toHHMM(m));
     timeCol.appendChild(lbl);
   }
@@ -1079,17 +1124,17 @@ function renderCalendar(state) {
     col.className = 'cal-day-col' + (dateStr === todayStr ? ' today' : '');
     col.style.height = totalPx + 'px';
 
-    for (let m = wsMin; m <= weMin; m += 60) {
+    for (let m = CAL_DAY_START; m <= CAL_DAY_END; m += 60) {
       const rule = document.createElement('div');
       rule.className = 'cal-hour-rule';
-      rule.style.top = ((m - wsMin) * PX_PER_MIN) + 'px';
+      rule.style.top = ((m - CAL_DAY_START) * PX_PER_MIN) + 'px';
       col.appendChild(rule);
     }
 
     if (dateStr === todayStr) {
       const nowM = localNowMin(prefs);
-      if (nowM !== null && nowM >= wsMin && nowM <= weMin) {
-        const y = (nowM - wsMin) * PX_PER_MIN;
+      if (nowM !== null && nowM >= CAL_DAY_START && nowM <= CAL_DAY_END) {
+        const y = (nowM - CAL_DAY_START) * PX_PER_MIN;
         const dot = document.createElement('div');
         dot.className = 'cal-now-dot';
         dot.style.top = (y - 3) + 'px';
@@ -1122,7 +1167,7 @@ function renderCalendar(state) {
       blocks.forEach(b => {
         const startM  = toMin(b.start);
         const endM    = toMin(b.end);
-        const top     = (startM - wsMin) * PX_PER_MIN;
+        const top     = (startM - CAL_DAY_START) * PX_PER_MIN;
         const height  = Math.max((endM - startM) * PX_PER_MIN, 16);
         const isChunk = b.idx >= 0;
 
@@ -1147,6 +1192,7 @@ function renderCalendar(state) {
 
   scroll.appendChild(body);
   calWeek.appendChild(scroll);
+  scroll.scrollTop = (wsMin - CAL_DAY_START) * PX_PER_MIN;
 }
 
 // ── Settings ───────────────────────────────────────────────────────────
