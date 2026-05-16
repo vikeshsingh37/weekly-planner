@@ -14,7 +14,8 @@ from dataclasses import dataclass, asdict
 from typing import List, Optional
 
 from agent.agent import DailyPlannerAgent
-from agent.memory import SessionManager
+from impl.memory import JSONSessionManager
+from impl.tools import ToolRunner
 from evals.test_cases import EvalCase, ALL_CASES
 
 
@@ -38,11 +39,12 @@ class CaseResult:
 
 def run_case(case: EvalCase, verbose: bool = False) -> CaseResult:
     """Run one eval case in an isolated agent with a fresh session."""
-    agent = DailyPlannerAgent(session_file=None, verbose=verbose)
+    session = JSONSessionManager(session_file=None)
+    agent = DailyPlannerAgent(session=session, tools=ToolRunner(), verbose=verbose)
 
     # Apply preference overrides if any
     if case.preferences:
-        agent.session.state.preferences.update(case.preferences)
+        session.update_preferences(case.preferences)
 
     responses: List[str] = []
     error = None
@@ -69,7 +71,7 @@ def run_case(case: EvalCase, verbose: bool = False) -> CaseResult:
             check_results.append(CheckResult(check.description, False, "Case errored"))
             continue
         try:
-            passed = check.fn(agent.session, responses)
+            passed = check.fn(session, responses)
             check_results.append(CheckResult(check.description, passed))
             if not passed:
                 all_passed = False

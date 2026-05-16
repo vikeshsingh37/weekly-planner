@@ -11,13 +11,13 @@ Case format:
 from dataclasses import dataclass
 from typing import Callable, List
 
-from agent.memory import SessionManager
+from api.memory import AbstractSessionManager
 
 
 @dataclass
 class Check:
     description: str
-    fn: Callable[[SessionManager, List[str]], bool]  # (session, agent_responses) → pass
+    fn: Callable[[AbstractSessionManager, List[str]], bool]  # (session, agent_responses) → pass
 
 
 @dataclass
@@ -32,16 +32,17 @@ class EvalCase:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _scheduled_count(session: SessionManager) -> int:
+def _scheduled_count(session: AbstractSessionManager) -> int:
     return sum(1 for t in session.state.tasks if t.status == "scheduled")
 
 
-def _task_names(session: SessionManager) -> List[str]:
+def _task_names(session: AbstractSessionManager) -> List[str]:
     return [t.name.lower() for t in session.state.tasks]
 
 
-def _no_conflicts(session: SessionManager) -> bool:
-    from agent.scheduler import check_conflicts
+def _no_conflicts(session: AbstractSessionManager) -> bool:
+    from impl.scheduler import EDFScheduler
+    check_conflicts = EDFScheduler().check_conflicts
     return len(check_conflicts(session.state.tasks)) == 0
 
 

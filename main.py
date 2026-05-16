@@ -13,6 +13,8 @@ import os
 import sys
 
 from agent.agent import DailyPlannerAgent
+from impl.memory import JSONSessionManager
+from impl.tools import ToolRunner
 
 
 def main():
@@ -26,7 +28,8 @@ def main():
         os.makedirs("sessions", exist_ok=True)
         session_file = f"sessions/{args.session}.json"
 
-    agent = DailyPlannerAgent(session_file=session_file, verbose=args.verbose)
+    session = JSONSessionManager(session_file=session_file)
+    agent = DailyPlannerAgent(session=session, tools=ToolRunner(), verbose=args.verbose)
 
     print("Daily Planner Agent  (type 'quit' or Ctrl-C to exit)")
     print("─" * 50)

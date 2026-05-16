@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/vikesh/Documents/git-repos/daily-planner -type f | head -50 && echo \"---\" && ls -la /Users/vikesh/Documents/git-repos/daily-planner)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
