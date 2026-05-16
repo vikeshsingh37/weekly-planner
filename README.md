@@ -8,24 +8,24 @@ A conversational AI agent that helps you plan your workday. Tell it what tasks y
 
 ```bash
 # 1. Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # 2. Set your API key
 cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 
 # 3. Run the agent
-python main.py
+uv run python main.py
 ```
 
 To keep a session across restarts:
 ```bash
-python main.py --session my_day
+uv run python main.py --session my_day
 ```
 
 To see every tool call the agent makes:
 ```bash
-python main.py --verbose
+uv run python main.py --verbose
 ```
 
 ---
@@ -56,15 +56,21 @@ Agent: Done. Gym is now pinned at 17:00 – 18:00. I've rescheduled the rest:
 
 ```
 main.py                     ← CLI entry point
+run_evals.py                ← Eval CLI entry point
+api/
+  models.py                 ← Pydantic data models (Task, Preferences, tool I/O)
+  scheduler.py              ← AbstractScheduler (ABC)
+  memory.py                 ← AbstractSessionManager (ABC)
+  tools.py                  ← AbstractToolRunner (ABC) + Claude tool schema
+impl/
+  scheduler.py              ← EDFScheduler(AbstractScheduler)
+  memory.py                 ← JSONSessionManager(AbstractSessionManager)
+  tools.py                  ← ToolRunner(AbstractToolRunner)
 agent/
-  agent.py                  ← Conversational loop (Claude API)
-  tools.py                  ← 5 deterministic tool functions
-  scheduler.py              ← EDF scheduling algorithm
-  memory.py                 ← Session state + JSON persistence
+  agent.py                  ← Conversational loop — depends only on api abstractions
 evals/
   test_cases.py             ← 15 eval scenarios across 4 categories
   eval_runner.py            ← Runs cases, reports pass/fail
-run_evals.py                ← Eval CLI entry point
 docs/
   architecture.md           ← Design decisions, trade-offs, failure modes
 ```
@@ -83,19 +89,19 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design rationale
 
 ```bash
 # Run all 15 eval cases
-python run_evals.py
+uv run python run_evals.py
 
 # Single category
-python run_evals.py --category task_completion
-python run_evals.py --category hallucination
-python run_evals.py --category graceful_failure
-python run_evals.py --category memory
+uv run python run_evals.py --category task_completion
+uv run python run_evals.py --category hallucination
+uv run python run_evals.py --category graceful_failure
+uv run python run_evals.py --category memory
 
 # Save JSON report
-python run_evals.py --output results/report.json
+uv run python run_evals.py --output results/report.json
 
 # Verbose (show tool calls + responses)
-python run_evals.py --verbose
+uv run python run_evals.py --verbose
 ```
 
 ### Eval categories
@@ -138,7 +144,7 @@ See [`docs/architecture.md`](docs/architecture.md) for detailed analysis and pro
 
 ## Requirements
 
-- Python 3.11+
-- `anthropic>=0.40.0`
-- `python-dotenv>=1.0.0`
+- Python 3.14+ (managed by uv)
 - An Anthropic API key (claude-sonnet-4-6)
+
+Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`. Run `uv sync` to install.
