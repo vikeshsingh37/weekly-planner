@@ -298,11 +298,12 @@ class ToolRunner(AbstractToolRunner):
             }
         try:
             from impl.weather import fetch_forecast, summarize_forecast
+            date = inputs.get("date") or prefs.date
             raw = fetch_forecast(
                 latitude=prefs.latitude,
                 longitude=prefs.longitude,
                 timezone=prefs.timezone,
-                date=prefs.date,
+                date=date,
             )
             return summarize_forecast(
                 data=raw,
