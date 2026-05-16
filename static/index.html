@@ -74,8 +74,10 @@ html, body {
 .chat-panel {
   display: flex; flex-direction: column;
   width: 480px; flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  background: var(--bg);
+  border-right: 2px solid #c9cdd6;
+  background: var(--surface);
+  box-shadow: 3px 0 12px rgba(0,0,0,.07);
+  z-index: 2;
 }
 
 /* ── Chat inner header (New Chat lives here) ───────────────────────────── */
@@ -98,6 +100,7 @@ html, body {
 .messages {
   flex: 1; overflow-y: auto; padding: 16px 14px;
   display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface);
 }
 .messages::-webkit-scrollbar { width: 5px; }
 .messages::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
@@ -787,7 +790,7 @@ let _locLat = null, _locLon = null;
 let _calViewOffset = 0;
 let _lastState = null;
 
-const PX_PER_MIN    = 1.5;
+const PX_PER_MIN    = 1.0;
 const CAL_DAY_START = 0;          // 12 AM — top of visible calendar
 const CAL_DAY_END   = 24 * 60;   // 12 AM next day — bottom of visible calendar
 
@@ -1152,7 +1155,7 @@ function renderCalendar(state) {
 
   scroll.appendChild(body);
   calWeek.appendChild(scroll);
-  scroll.scrollTop = (wsMin - CAL_DAY_START) * PX_PER_MIN;
+  scroll.scrollTop = (8 * 60 - CAL_DAY_START) * PX_PER_MIN;
 }
 
 // ── Settings ───────────────────────────────────────────────────────────
