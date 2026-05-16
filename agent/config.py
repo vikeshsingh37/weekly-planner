@@ -3,7 +3,7 @@
 from pathlib import Path
 
 MODEL = "claude-sonnet-4-6"
-MAX_TOKENS = 4096
+MAX_TOKENS = 2048
 MAX_LOOP_ITERATIONS = 10   # max LLM calls per chat() turn before giving up
 TEMPERATURE = 1.0
 THINKING_TYPE = "adaptive"
