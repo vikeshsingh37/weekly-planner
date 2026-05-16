@@ -153,8 +153,9 @@ class TaskInput(BaseModel):
     deadline: Optional[str] = None
     notes: Optional[str] = None
     date: Optional[str] = None  # YYYY-MM-DD; None = session base date
+    start_time: Optional[str] = None  # HH:MM; pins task at this time when set
 
-    @field_validator("deadline", mode="before")
+    @field_validator("deadline", "start_time", mode="before")
     @classmethod
     def validate_deadline(cls, v: Optional[str]) -> Optional[str]:
         return _validate_hhmm(v)

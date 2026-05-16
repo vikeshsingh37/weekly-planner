@@ -28,7 +28,10 @@ from agent.agent import WeeklyPlannerAgent
 from api.models import UpdatePreferencesInput
 from impl.auth import authenticate, create_token, email_to_user_id, register, verify_token
 from impl.memory import JSONSessionManager
+from impl.postgres_memory import PostgresSessionManager, ensure_table
 from impl.tools import ToolRunner
+
+_DATABASE_URL: str | None = os.environ.get("DATABASE_URL")
 
 _TOOL_LABELS: dict[str, str] = {
     "parse_and_add_tasks": "Adding tasks",
@@ -41,6 +44,11 @@ _TOOL_LABELS: dict[str, str] = {
 }
 
 app = FastAPI(title="Weekly Planner")
+
+@app.on_event("startup")
+def _startup():
+    if _DATABASE_URL:
+        ensure_table(_DATABASE_URL)
 _HTML = (Path(__file__).parent / "static" / "index.html").read_text
 _bearer = HTTPBearer(auto_error=False)
 
@@ -64,10 +72,12 @@ def _require_user(
     return user_id
 
 
-def _session_file(user_id: str) -> str:
+def _make_session(user_id: str) -> JSONSessionManager | PostgresSessionManager:
+    if _DATABASE_URL:
+        return PostgresSessionManager(user_id=user_id, conninfo=_DATABASE_URL)
     path = f"sessions/{user_id}"
     os.makedirs(path, exist_ok=True)
-    return f"{path}/state.json"
+    return JSONSessionManager(session_file=f"{path}/state.json")
 
 
 # ── Static ─────────────────────────────────────────────────────────────────────
@@ -103,7 +113,7 @@ async def auth_login(body: _AuthRequest):
 
 @app.get("/api/schedule")
 async def api_get_schedule(user_id: Annotated[str, Depends(_require_user)]):
-    mgr = JSONSessionManager(session_file=_session_file(user_id))
+    mgr = _make_session(user_id)
     state = mgr.state.model_dump(exclude={"conversation_history"})
     return JSONResponse(state)
 
@@ -139,7 +149,7 @@ async def api_save_preferences(
     body: UpdatePreferencesInput,
     user_id: Annotated[str, Depends(_require_user)],
 ):
-    mgr = JSONSessionManager(session_file=_session_file(user_id))
+    mgr = _make_session(user_id)
     try:
         mgr.update_preferences(body.model_dump(exclude_none=True))
         mgr.save()
@@ -162,7 +172,7 @@ async def ws_endpoint(websocket: WebSocket, token: str = Query(default="")):
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
 
-    mgr = JSONSessionManager(session_file=_session_file(user_id))
+    mgr = _make_session(user_id)
 
     def on_event(event: str, *args):
         payload: dict = {"type": event}

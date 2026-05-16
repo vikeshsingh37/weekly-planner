@@ -11,22 +11,24 @@ AI agent that schedules your week from natural language. Tell it what you need t
 uv sync
 ```
 
-**2. Start Langfuse (observability)**
+**2. Start Langfuse + Postgres (observability + session storage)**
 ```bash
 docker compose up -d
 ```
-This starts Langfuse + Postgres at **http://localhost:3000**. Open it, create a local account, create a project, and copy the two keys — you'll need them in the next step.
+This starts Langfuse at **http://localhost:3000** and Postgres on port 5432. Open Langfuse, create a local account, create a project, and copy the two keys — you'll need them in the next step.
 
 **3. Configure**
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and fill in all four values:
+Edit `.env` and fill in the values:
 ```env
 ANTHROPIC_API_KEY=sk-ant-...        # from console.anthropic.com
 
 SECRET_KEY=<random string>          # signs auth tokens — generate one:
                                     # python -c "import secrets; print(secrets.token_hex(32))"
+
+DATABASE_URL=postgresql://langfuse:langfuse@localhost:5432/langfuse  # session storage
 
 LANGFUSE_PUBLIC_KEY=pk-lf-...       # from http://localhost:3000
 LANGFUSE_SECRET_KEY=sk-lf-...
@@ -47,16 +49,17 @@ Go to **http://localhost:8000**, register with your email and password, then sta
 ## What you can do
 
 ```
-You: I have a design doc (3h, deadline 2 PM), PR reviews (1h), and a standup (30 min) today.
+You: I have a design doc (3h, deadline 2 PM), PR reviews (1h), and standup at 9:30 AM today.
 
 Agent: Added 3 tasks. Here's today's schedule:
 
-  Write design doc — 2 focus blocks (deadline 2 PM):
-    • 9:00 – 10:30 AM  Block 1/2
-    • 10:35 – 12:05 PM  Block 2/2
+  • 9:30 – 10:00 AM  Standup (pinned)
 
-  • 12:10 – 1:10 PM  PR reviews
-  • 1:15 – 1:45 PM   Standup
+  Write design doc — 2 focus blocks (deadline 2 PM):
+    • 10:05 – 11:35 AM  Block 1/2
+    • 11:40 AM – 1:10 PM  Block 2/2
+
+  • 1:15 – 2:15 PM  PR reviews
 
 You: Move standup to 10 AM. And add a 2h deep work block for tomorrow.
 
@@ -66,7 +69,9 @@ Agent: Done — standup pinned at 10 AM, schedule adjusted around it.
 
 Things you can ask:
 - Add tasks for any day this week — *"add a 90-min planning session for Wednesday"*
+- Pin tasks to exact times — *"schedule standup on Tuesday and Thursday at 9:30 AM"*
 - Move or reschedule tasks — *"move the design doc to tomorrow afternoon"*
+- Remove tasks — agent asks for confirmation before deleting
 - Change your work hours or timezone — *"my day starts at 8 AM"*
 - Plan around weather — *"schedule a 30-min run today"* (fetches forecast automatically)
 - See the full week — *"show me my schedule for the next 5 days"*
@@ -76,28 +81,31 @@ Things you can ask:
 ## Architecture
 
 ```
-server.py          FastAPI server — auth endpoints, REST API, WebSocket
-cli.py             Interactive CLI (same agent, no browser needed)
-static/index.html  Single-file web UI — login screen + chat + calendar
-api/               Abstract interfaces (Scheduler, SessionManager, ToolRunner) + Pydantic models
+server.py               FastAPI server — auth endpoints, REST API, WebSocket
+cli.py                  Interactive CLI (same agent, no browser needed)
+static/index.html       Single-file web UI — login screen + chat + 24-hour calendar + debug trace
+api/                    Abstract interfaces (Scheduler, SessionManager, ToolRunner) + Pydantic models
 impl/
-  auth.py          JWT auth, bcrypt passwords, email → user-ID mapping
-  memory.py        JSON session files (one per user: sessions/{user_id}/state.json)
-  scheduler.py     Earliest-Deadline-First scheduler with focus-block splitting
-  tools.py         Tool implementations (add, schedule, move, remove, prefs, weather)
-  weather.py       Open-Meteo forecast fetcher
+  auth.py               JWT auth, bcrypt passwords, email → user-ID mapping
+  memory.py             _BaseSessionManager (in-memory + lock) + JSONSessionManager (file fallback)
+  postgres_memory.py    PostgresSessionManager — JSONB session storage in Postgres
+  scheduler.py          Earliest-Deadline-First scheduler with focus-block splitting
+  tools.py              Tool implementations (add, schedule, move, remove, prefs, weather)
+  weather.py            Open-Meteo forecast fetcher
 agent/
-  agent.py         Agentic loop — calls Claude, executes tools, streams events
-  system_prompt.txt  Agent instructions (edit freely)
-data/users.json    User registry — auto-created on first register
+  agent.py              Agentic loop — calls Claude, executes tools in parallel, streams events
+  system_prompt.txt     Agent instructions (edit freely)
+data/users.json         User registry — auto-created on first register
 ```
 
 **Key choices:**
 - Plain Python agentic loop (~50 lines) — no LangGraph, easy to trace and debug
-- `api/` vs `impl/` split — swap the JSON store for Redis or the EDF scheduler for ILP without touching the agent
+- `api/` vs `impl/` split — swap Postgres for Redis or EDF for ILP without touching the agent
 - Deterministic scheduling — the LLM picks which tool to call; Python decides the time slots
 - EDF (Earliest-Deadline-First) — optimal for single-machine scheduling with deadlines
-- User isolation at the filesystem level — each email maps to its own session directory
+- Parallel tool execution — multiple tool calls per LLM turn run concurrently via `ThreadPoolExecutor`; session-level locking ensures state safety
+- Postgres session storage — same Postgres instance as Langfuse; falls back to JSON files if `DATABASE_URL` is unset
+- Debug trace button — after each agent reply, a collapsible panel shows every tool step with its execution time (ms)
 
 See [`docs/architecture.md`](docs/architecture.md) for full design rationale.
 
@@ -147,5 +155,5 @@ uv run python run_evals.py --output results/out.json
 ## Requirements
 
 - Python 3.14+
-- Docker (for Langfuse observability)
+- Docker (for Langfuse observability + Postgres session storage)
 - Anthropic API key (`claude-sonnet-4-6`)
