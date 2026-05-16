@@ -2,7 +2,7 @@
 name = "daily-planner"
 version = "0.1.0"
 description = "Conversational AI agent for daily task planning"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "anthropic>=0.102.0",
     "pydantic>=2.0",
