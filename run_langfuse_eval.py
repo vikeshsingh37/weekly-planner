@@ -49,14 +49,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from evals.llm_judge import judge_faithfulness, judge_helpfulness, judge_failure_explanation  # noqa: E402
+from evals.config import (  # noqa: E402
+    DATASET_NAME, RESULTS_DIR, EVAL_USER_ID,
+    EVAL_SESSION_DIR as _SESSION_DIR,
+    PASS_THRESHOLD_SSA, PASS_THRESHOLD_TSA, PASS_THRESHOLD_TPA,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-DATASET_NAME  = "weekly-planner-v1"
-RESULTS_DIR   = "eval_results"
-EVAL_USER_ID  = "eval_user"
-_SESSION_DIR  = os.path.join("sessions", EVAL_USER_ID)
 
 
 # ── Scoring helpers ───────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ def run_item(item, dp, lf, run_name: str) -> dict:
                     dp.turns, responses
                 )
 
-            passed = ssa >= 0.9 and tsa >= 0.95 and tpa >= 0.9
+            passed = ssa >= PASS_THRESHOLD_SSA and tsa >= PASS_THRESHOLD_TSA and tpa >= PASS_THRESHOLD_TPA
 
             # Push deterministic scores
             lf.score(trace_id=trace_id, name="tool_selection_accuracy", value=tsa)

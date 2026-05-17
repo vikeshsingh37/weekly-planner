@@ -17,8 +17,7 @@ import sys
 
 from evals.eval_runner import run_all
 from evals.eval_data import ALL_CASES
-
-RESULTS_DIR = "eval_results"
+from evals.config import RESULTS_DIR
 
 CATEGORIES = sorted({c.category for c in ALL_CASES})
 

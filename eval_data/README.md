@@ -89,10 +89,12 @@ instead — the spans within a trace are ordered chronologically.
 **SSA** — Fraction of `SessionCheck` predicates that pass after all turns complete.
 This is the ground-truth check: did the right things actually persist?
 
-### C. LLM-as-judge (GPT-4.5)
+### C. LLM-as-judge
 
 These three metrics run in `run_langfuse_eval.py` (project root) via the OpenAI API (`evals/llm_judge.py`).
 They catch semantic issues that keyword matching cannot reliably detect.
+
+The judge model is set in `evals/config.py` (`JUDGE_MODEL`). Change it there to switch models without touching any other file.
 
 | Metric | Target | What it checks |
 |---|---|---|
@@ -124,7 +126,7 @@ You already have Langfuse integrated (`agent.py` uses `@observe` decorators and
    Langfuse dashboard alongside p50/p95 latency, cost, and model metadata.
 
 2. **LLM-as-judge** — Langfuse supports "online evaluations" that score a
-   configurable % of live traces using a prompt template + cheap model (Haiku).
+   configurable % of live traces using a prompt template + model of your choice.
    No code changes needed once configured in the Langfuse UI.
 
 3. **Trace drill-down** — for failed cases, inspect the full LLM message log,
@@ -182,7 +184,7 @@ lf.score(
 ### 2. LLM-as-judge on sampled live traces (Langfuse online eval)
 
 Configure in the Langfuse UI — no code changes:
-- **Evaluator model**: `gpt-4.5-preview` or `claude-haiku-4-5-20251001` (fast, cheap)
+- **Evaluator model**: any OpenAI-compatible model (see `evals/config.py` `JUDGE_MODEL`)
 - **Sample rate**: 10%–20% of traces
 - **Prompt template**:
 
@@ -196,7 +198,7 @@ Score 0–1 on faithfulness (response matches tool output) and helpfulness (clea
 Return JSON: {"faithfulness": float, "helpfulness": float}
 ```
 
-For offline evals, `evals/llm_judge.py` implements the same three judges (faithfulness, helpfulness, failure_explanation) against GPT-4.5 and is called automatically by `run_langfuse_eval.py` (project root).
+For offline evals, `evals/llm_judge.py` implements the same three judges (faithfulness, helpfulness, failure_explanation) and is called automatically by `run_langfuse_eval.py` (project root). The model is read from `evals/config.py`.
 
 ### 3. User feedback signal
 
