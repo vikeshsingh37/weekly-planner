@@ -29,15 +29,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from evals.config import DATASET_NAME, DATASET_DESCRIPTION  # noqa: E402
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-DATASET_NAME = "weekly-planner-v1"
-DATASET_DESCRIPTION = (
-    "25 hand-crafted eval cases for the Weekly Planner agent covering "
-    "tool selection, parameter extraction, multi-turn coherence, answer "
-    "faithfulness, and edge cases."
-)
 
 
 # ── Serialisation ─────────────────────────────────────────────────────────────

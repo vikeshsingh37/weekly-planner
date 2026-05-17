@@ -34,7 +34,7 @@ LANGFUSE_PUBLIC_KEY=pk-lf-...       # from http://localhost:3000
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=http://localhost:3000
 
-OPENAI_API_KEY=sk-...               # GPT-4.5 LLM-as-judge (evals only)
+OPENAI_API_KEY=sk-...               # LLM-as-judge for evals (model configured in evals/config.py)
 ```
 
 **4. Start the server**
@@ -98,17 +98,26 @@ impl/
   weather.py            Open-Meteo forecast fetcher
 agent/
   agent.py              Agentic loop — calls Claude, executes tools in parallel, streams events
+  config.py             Agent config — model, token limits, temperature, thinking settings
   system_prompt.txt     Agent instructions (edit freely)
 evals/
-  eval_data.py          15 EvalCase definitions used by the local runner
+  config.py             Eval config — judge model, pass thresholds, dataset name, shared paths
+  eval_data.py          EvalCase definitions used by the local runner
   eval_runner.py        Local runner logic — isolated sessions, check assertions
-  llm_judge.py          GPT-4.5 judge prompts for faithfulness / helpfulness / failure_explanation
+  llm_judge.py          LLM-as-judge prompts for faithfulness / helpfulness / failure_explanation
   push_to_langfuse.py   Upserts the dataset to Langfuse (run once, or after dataset changes)
 eval_data/
   dataset.py            25 EvalDatapoint definitions with tool-call and session-state expectations
   schemas.py            EvalDatapoint, ExpectedToolCall, AnswerCheck dataclasses
-  metrics.py            TSA / TPA scoring logic (deterministic)
+  metrics.py            TSA / TPA / SSA / AKR / AF / GFR scoring logic (deterministic)
   visualize.py          CLI table for comparing eval runs
+tests/
+  test_scheduler.py     EDF scheduler — helpers, scheduling, deadlines, pinned tasks, chunking, conflicts
+  test_metrics.py       All 6 metric functions (TSA, TPA, FTA, AKR, AF, SSA, GFR)
+  test_schemas.py       ParamCheck operators and dot-path traversal
+  test_models.py        Task and Preferences Pydantic validators
+  test_memory.py        JSONSessionManager add / find / remove / preferences / history
+  test_eval_config.py   evals/config.py sanity checks
 data/users.json         User registry — auto-created on first register
 ```
 
@@ -131,6 +140,18 @@ See [`docs/architecture.md`](docs/architecture.md) for full design rationale.
 uv run python cli.py                 # uses system username as session key
 uv run python cli.py --user alice    # explicit user
 uv run python cli.py --verbose       # show tool calls
+```
+
+---
+
+## Tests
+
+124 unit tests covering the scheduler, all metric functions, Pydantic model validators, session manager, and eval config. No API keys or external services required.
+
+```bash
+uv run pytest           # run all tests
+uv run pytest -v        # verbose output
+uv run pytest tests/test_scheduler.py   # single file
 ```
 
 ---
@@ -180,9 +201,11 @@ uv run python run_local_evals.py
 | Deterministic | TSA | Tool called on the correct turn |
 | Deterministic | TPA | Correct arguments extracted |
 | Deterministic | SSA | Session state correct after all turns |
-| LLM-as-judge (GPT-4.5) | faithfulness | Response matches actual tool outputs |
-| LLM-as-judge (GPT-4.5) | helpfulness | Response is clear and actionable |
-| LLM-as-judge (GPT-4.5) | failure_explanation | For edge cases: explains *why*, not just "sorry" |
+| LLM-as-judge | faithfulness | Response matches actual tool outputs |
+| LLM-as-judge | helpfulness | Response is clear and actionable |
+| LLM-as-judge | failure_explanation | For edge cases: explains *why*, not just "sorry" |
+
+The LLM-as-judge model and pass thresholds are configured in `evals/config.py`.
 
 See [`eval_data/README.md`](eval_data/README.md) for full dataset documentation.
 

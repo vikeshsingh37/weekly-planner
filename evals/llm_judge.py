@@ -19,10 +19,9 @@ import os
 
 from openai import OpenAI
 
-logger = logging.getLogger(__name__)
+from evals.config import JUDGE_MODEL as _JUDGE_MODEL, JUDGE_MAX_TOKENS as _MAX_TOKENS
 
-_JUDGE_MODEL = "gpt-4.5-preview"
-_MAX_TOKENS = 256
+logger = logging.getLogger(__name__)
 
 
 def _judge(system: str, user: str) -> tuple[float, str]:

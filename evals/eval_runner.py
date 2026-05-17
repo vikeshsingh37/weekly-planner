@@ -18,11 +18,9 @@ from agent.agent import WeeklyPlannerAgent
 from impl.memory import JSONSessionManager
 from impl.tools import ToolRunner
 from evals.eval_data import EvalCase, ALL_CASES
+from evals.config import EVAL_USER_ID, EVAL_SESSION_DIR as _EVAL_SESSION_DIR
 
 logger = logging.getLogger(__name__)
-
-EVAL_USER_ID = "eval_user"
-_EVAL_SESSION_DIR = os.path.join("sessions", EVAL_USER_ID)
 
 
 @dataclass
