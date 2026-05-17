@@ -10,11 +10,15 @@ Usage:
 """
 
 import argparse
+import datetime
 import logging
+import os
 import sys
 
 from evals.eval_runner import run_all
-from evals.test_cases import ALL_CASES
+from evals.eval_data import ALL_CASES
+
+RESULTS_DIR = "eval_results"
 
 CATEGORIES = sorted({c.category for c in ALL_CASES})
 
@@ -23,7 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run weekly planner eval suite")
     parser.add_argument("--category", choices=CATEGORIES, help="Run only one category")
     parser.add_argument("--verbose", action="store_true", help="Show agent tool calls")
-    parser.add_argument("--output", default=None, help="Path to write JSON report")
+    parser.add_argument("--output", default=None, help="Path to write JSON report (auto-generated if omitted)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -31,11 +35,18 @@ def main():
         format="%(message)s",
     )
 
+    if args.output:
+        output_file = args.output
+    else:
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(RESULTS_DIR, f"{stamp}.json")
+
     categories = [args.category] if args.category else None
-    report = run_all(
-        output_file=args.output,
-        categories=categories,
-    )
+    report = run_all(output_file=output_file, categories=categories)
+
+    logging.getLogger().info("Results saved → %s", output_file)
+
     # Exit non-zero if any case failed (useful for CI)
     sys.exit(0 if report["summary"]["passed_cases"] == report["summary"]["total_cases"] else 1)
 

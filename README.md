@@ -33,6 +33,8 @@ DATABASE_URL=postgresql://langfuse:langfuse@localhost:5432/langfuse  # session s
 LANGFUSE_PUBLIC_KEY=pk-lf-...       # from http://localhost:3000
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=http://localhost:3000
+
+OPENAI_API_KEY=sk-...               # GPT-4.5 LLM-as-judge (evals only)
 ```
 
 **4. Start the server**
@@ -83,6 +85,8 @@ Things you can ask:
 ```
 server.py               FastAPI server — auth endpoints, REST API, WebSocket
 cli.py                  Interactive CLI (same agent, no browser needed)
+run_local_evals.py      Offline eval runner — no Langfuse / OpenAI needed, CI-friendly
+run_langfuse_eval.py    Full eval runner — scores all metrics and pushes results to Langfuse
 static/index.html       Single-file web UI — login screen + chat + 24-hour calendar + debug trace
 api/                    Abstract interfaces (Scheduler, SessionManager, ToolRunner) + Pydantic models
 impl/
@@ -95,6 +99,16 @@ impl/
 agent/
   agent.py              Agentic loop — calls Claude, executes tools in parallel, streams events
   system_prompt.txt     Agent instructions (edit freely)
+evals/
+  eval_data.py          15 EvalCase definitions used by the local runner
+  eval_runner.py        Local runner logic — isolated sessions, check assertions
+  llm_judge.py          GPT-4.5 judge prompts for faithfulness / helpfulness / failure_explanation
+  push_to_langfuse.py   Upserts the dataset to Langfuse (run once, or after dataset changes)
+eval_data/
+  dataset.py            25 EvalDatapoint definitions with tool-call and session-state expectations
+  schemas.py            EvalDatapoint, ExpectedToolCall, AnswerCheck dataclasses
+  metrics.py            TSA / TPA scoring logic (deterministic)
+  visualize.py          CLI table for comparing eval runs
 data/users.json         User registry — auto-created on first register
 ```
 
@@ -136,19 +150,41 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 
 ## Evals
 
+25 hand-crafted cases across 5 categories. One runner — `run_langfuse_eval.py` — scores all metrics and pushes results to Langfuse.
+
 ```bash
-uv run python run_evals.py                           # all 15 cases
-uv run python run_evals.py --category task_completion
-uv run python run_evals.py --verbose                 # show tool calls + responses
-uv run python run_evals.py --output results/out.json
+# Push dataset to Langfuse once (or after dataset changes)
+uv run python evals/push_to_langfuse.py
+
+# Run evals — one LLM call per case, all metrics scored and pushed to Langfuse
+uv run python run_langfuse_eval.py
+uv run python run_langfuse_eval.py --run-name sprint-12
+uv run python run_langfuse_eval.py --dataset weekly-planner-v2
+
+# Quick local sanity check (no Langfuse / OpenAI needed)
+uv run python run_local_evals.py
 ```
 
-| Category | Cases | Tests |
-|----------|-------|-------|
-| `task_completion` | 4 | All tasks scheduled, correct partial scheduling |
-| `hallucination` | 3 | Agent never invents time slots or tasks |
-| `graceful_failure` | 4 | Impossible schedules, conflicts, empty sessions |
-| `memory` | 4 | Tasks, moves, and removals persist across turns |
+| Category | Cases | What it tests |
+|----------|-------|---------------|
+| `tool_selection` | 7 | Correct tool chosen for each intent |
+| `tool_params` | 6 | Correct arguments extracted from natural language |
+| `multi_turn` | 5 | State coherence across 2–5 turns |
+| `final_answer` | 4 | Response text faithfully reflects tool outputs |
+| `edge_case` | 3 | Graceful handling of impossible / ambiguous inputs |
+
+**Metrics scored per case:**
+
+| Type | Metric | What it measures |
+|------|--------|-----------------|
+| Deterministic | TSA | Tool called on the correct turn |
+| Deterministic | TPA | Correct arguments extracted |
+| Deterministic | SSA | Session state correct after all turns |
+| LLM-as-judge (GPT-4.5) | faithfulness | Response matches actual tool outputs |
+| LLM-as-judge (GPT-4.5) | helpfulness | Response is clear and actionable |
+| LLM-as-judge (GPT-4.5) | failure_explanation | For edge cases: explains *why*, not just "sorry" |
+
+See [`eval_data/README.md`](eval_data/README.md) for full dataset documentation.
 
 ---
 
