@@ -105,10 +105,25 @@ class SessionCheck:
 
 @dataclass
 class EvalDatapoint:
-    """One evaluation example, covering up to N conversation turns."""
+    """One evaluation example, covering up to N conversation turns.
+
+    `category` describes the *primary* thing being tested, not whether a case
+    is multi-turn.  Use `is_multi_turn` (derived from len(turns) > 1) for that.
+
+    Category meanings
+    -----------------
+    tool_selection  — was the correct tool chosen on the correct turn?
+    tool_params     — were arguments extracted correctly from natural language?
+    final_answer    — is the agent's text response accurate and well-formed?
+    edge_case       — graceful handling of impossible / ambiguous inputs.
+
+    Note: cases in every category can be multi-turn.  13 of 25 cases have
+    len(turns) > 1.  Use `is_multi_turn` to slice by conversation length
+    independently of category.
+    """
 
     id: str
-    category: str  # tool_selection | tool_params | multi_turn | final_answer | edge_case
+    category: str  # tool_selection | tool_params | final_answer | edge_case
     description: str
     turns: List[str]  # ordered user messages
 
@@ -116,11 +131,21 @@ class EvalDatapoint:
     answer_checks: List[AnswerCheck] = field(default_factory=list)
     session_checks: List[SessionCheck] = field(default_factory=list)
 
-    # Which metrics from metrics.py to compute for this datapoint
-    metrics: List[str] = field(default_factory=list)
-
     # Optional preference overrides applied to the fresh session before any turns run
     preferences: Optional[dict] = None
 
+    # Simulated "current time" (HH:MM) injected as preferences.current_time.
+    # When set, the agent and scheduler use this fixed value instead of datetime.now(),
+    # making eval results reproducible regardless of when the suite runs.
+    current_time: Optional[str] = None
+
     # Human-readable rationale / what edge case this covers
     notes: str = ""
+
+    @property
+    def num_turns(self) -> int:
+        return len(self.turns)
+
+    @property
+    def is_multi_turn(self) -> bool:
+        return len(self.turns) > 1

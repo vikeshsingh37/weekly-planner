@@ -14,24 +14,25 @@ eval_data/
 └── README.md       This file
 
 eval_results/           auto-created on first run
-└── YYYYMMDD_HHMMSS.json  one timestamped file per run_local_evals.py / run_langfuse_eval.py invocation
+└── YYYYMMDD_HHMMSS.json  one timestamped file per run_evals.py invocation
 ```
 
 ## Dataset overview
 
 | Category | Count | What it tests |
 |---|---|---|
-| `tool_selection` | 7 | Correct tool chosen for each intent (add, schedule, move, remove, view, prefs, weather) |
-| `tool_params` | 6 | Correct arguments extracted from natural language (durations, priorities, deadlines, timezones) |
-| `multi_turn` | 5 | State coherence across 2–5 turns; preference changes carry forward |
-| `final_answer` | 4 | Response text is faithful (12h format, names unscheduled tasks, explains deadline conflicts) |
-| `edge_case` | 3 | Graceful handling of impossible inputs (non-existent task, impossible deadline, task splitting) |
+| `tool_selection` | 9 | Correct tool chosen for each intent — including multi-turn sequences where the tool choice is the key signal (e.g. `move_task` vs `schedule_tasks`, remove then reschedule) |
+| `tool_params` | 7 | Correct arguments extracted from natural language (durations, priorities, deadlines, timezones, cross-turn preference propagation) |
+| `final_answer` | 5 | Response text is faithful (12h format, names unscheduled tasks, explains deadline conflicts, end-to-end coherence) |
+| `edge_case` | 4 | Graceful handling of impossible inputs (non-existent task, impossible deadline, task splitting, error without session corruption) |
 
-**Turn depth**: 16 cases are single-turn; 9 cases have 2–5 turns.
+**Turn depth**: 12 cases are single-turn; 13 cases have 2–5 turns (max 5). Category and conversation length are independent — use `EvalDatapoint.is_multi_turn` to slice by length across all categories.
+
+> The former `multi_turn` category has been dissolved. Those 5 cases now live in the category that best describes what they test (`tool_selection` × 2, `tool_params` × 1, `edge_case` × 1, `final_answer` × 1).
 
 ## Evaluation dimensions
 
-Every datapoint declares which of the following to measure in its `metrics` list.
+All six metrics are scored for every datapoint — there is no per-case `metrics` list.
 
 ### A. Tool-level
 
@@ -48,9 +49,12 @@ Every datapoint declares which of the following to measure in its `metrics` list
 #### Capturing tool calls
 
 No agent instrumentation needed — tool calls are already in Langfuse traces.
-`WeeklyPlannerAgent._run_tool()` is `@observe`-decorated, so every call is
-recorded as a child span with the tool name as the span name and the input
-dict as the span input.
+`WeeklyPlannerAgent._run_tool()` is `@observe`-decorated and explicitly calls
+`langfuse_context.update_current_observation(input=inputs)` and
+`update_current_observation(output=result)`, so every tool span shows the exact
+parameters passed (e.g. the full tasks array for `parse_and_add_tasks`) and the
+tool result. Tools with no input params (e.g. `schedule_tasks`) correctly show
+`{}` as input and the scheduled slots in the output.
 
 After a run, fetch the `eval_user` traces from the Langfuse API and reconstruct
 the tool call log:
@@ -91,7 +95,7 @@ This is the ground-truth check: did the right things actually persist?
 
 ### C. LLM-as-judge
 
-These three metrics run in `run_langfuse_eval.py` (project root) via the OpenAI API (`evals/llm_judge.py`).
+These three metrics run in `run_evals.py` (project root) via the OpenAI API (`evals/llm_judge.py`).
 They catch semantic issues that keyword matching cannot reliably detect.
 
 The judge model is set in `evals/config.py` (`JUDGE_MODEL`). Change it there to switch models without touching any other file.
@@ -110,9 +114,20 @@ Each judge call returns a float 0–1 and a one-sentence reason, which is stored
 
 **Short answer: use both. They serve different purposes.**
 
-### `run_langfuse_eval.py` (project root) — the single eval runner
+### `run_evals.py` (project root) — the single eval runner
 
-Runs all 8 metrics in one pass: TSA, TPA, SSA (deterministic) + faithfulness, helpfulness, failure_explanation (GPT-4.5 LLM-as-judge). Pushes all scores to Langfuse with reasons attached as score comments.
+Runs all 6 metrics in one pass: TSA, TPA, SSA (deterministic) + faithfulness, helpfulness, failure_explanation (GPT-4.5 LLM-as-judge). Pushes all scores to Langfuse with reasons attached as score comments. Also reports a cross-cut breakdown by conversation length (single-turn vs multi-turn) independent of category.
+
+Before any turns run, each session receives two layers of preferences:
+
+1. **`EVAL_DEFAULT_PREFERENCES`** (from `evals/config.py`) — applied to every case:
+   - `current_time = "08:00"` — simulated time so "1 PM" tasks are always in the future
+   - `work_start = "00:00"`, `work_end = "23:59"` — full-day window; no task fails due to work-window boundaries unless the case explicitly narrows them
+   - `timezone = "Asia/Kolkata"`, `location_name = "Bengaluru, Karnataka, India"` with pre-set coordinates — weather tests never hit "location not set"
+
+2. **Per-case `preferences`** and **`current_time`** — applied on top, overriding the defaults. Cases like FA_02 (narrow work window to force unschedulable tasks) and FA_03 still work correctly because their explicit `preferences` override the 24-hour default.
+
+The judge also receives the effective `current_time` and work window so it can verify scheduling math independently of when the suite runs.
 
 Requires: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`, `OPENAI_API_KEY` in `.env`.
 
@@ -154,7 +169,8 @@ for dp in ALL_DATAPOINTS:
                 ac.contains_any for ac in dp.answer_checks
             ],
         },
-        metadata={"id": dp.id, "category": dp.category, "notes": dp.notes},
+        metadata={"id": dp.id, "category": dp.category, "notes": dp.notes,
+                  "num_turns": dp.num_turns, "is_multi_turn": dp.is_multi_turn},
     )
 ```
 
@@ -198,7 +214,7 @@ Score 0–1 on faithfulness (response matches tool output) and helpfulness (clea
 Return JSON: {"faithfulness": float, "helpfulness": float}
 ```
 
-For offline evals, `evals/llm_judge.py` implements the same three judges (faithfulness, helpfulness, failure_explanation) and is called automatically by `run_langfuse_eval.py` (project root). The model is read from `evals/config.py`.
+For offline evals, `evals/llm_judge.py` implements the same three judges (faithfulness, helpfulness, failure_explanation) and is called automatically by `run_evals.py` (project root). The model is read from `evals/config.py`.
 
 ### 3. User feedback signal
 
@@ -243,7 +259,7 @@ both the terminal report and the Langfuse dataset run.
 evals/push_to_langfuse.py    ← run once to upload the 25 dataset items
         │
         ▼
-run_langfuse_eval.py         ← run to evaluate (one LLM call per case, at project root)
+run_evals.py         ← run to evaluate (one LLM call per case, at project root)
         │
         ├── agent.chat() calls attach as child spans via item.observe()
         │   so all turns of a case share ONE root trace, linked to the item
@@ -265,11 +281,9 @@ No changes to the agent are needed.
 
 ### What you see in Langfuse after a run
 
-- **Datasets → weekly-planner-v1 → Runs** — one run per `run_langfuse_eval.py` invocation
-- **Per-item**: SSA, AKR, GFR scores; full multi-turn trace with tool call spans
-- **TSA / TPA**: computed from the tool spans already in the trace — see
-  *Capturing tool calls* below
-- **Compare runs**: select two runs to diff scores side-by-side (useful after a model change)
+- **Datasets → weekly-planner-v1 → Runs** — one run per `run_evals.py` invocation
+- **Per-item**: TSA, TPA, SSA, faithfulness, helpfulness, failure_explanation scores; full multi-turn trace with tool call spans
+- **Compare runs**: select two runs to diff scores side-by-side (useful after a model or prompt change)
 
 ---
 
@@ -279,23 +293,13 @@ No changes to the agent are needed.
 # Install deps (uv manages the venv; project is installed in editable mode automatically)
 uv sync
 
-# ── Option A: Langfuse-linked run (recommended) ──────────────────────────────
-# One LLM call per case. Scores pushed to Langfuse. JSON saved locally.
-
 # Step 1 — push dataset items to Langfuse (only needed once, or after dataset changes)
 uv run python evals/push_to_langfuse.py
 
-# Step 2 — run evals (one agent call per case, traces linked to dataset items)
-uv run python run_langfuse_eval.py
-uv run python run_langfuse_eval.py --run-name sprint-12
-uv run python run_langfuse_eval.py --dataset weekly-planner-v2
-
-# ── Option B: offline-only run (no Langfuse or OpenAI keys needed) ───────────
-# Runs the 15 legacy cases in evals/eval_data.py via eval_runner.py.
-# Deterministic only (no LLM-as-judge). Useful as a zero-dependency smoke test.
-uv run python run_local_evals.py
-uv run python run_local_evals.py --category tool_selection
-uv run python run_local_evals.py --verbose
+# Step 2 — run evals (one agent call per case, all 6 metrics scored, traces linked to dataset items)
+uv run python run_evals.py
+uv run python run_evals.py --run-name sprint-12
+uv run python run_evals.py --dataset weekly-planner-v2
 
 # Visualize the latest saved result (terminal)
 uv run python eval_data/visualize.py
@@ -316,11 +320,11 @@ for k, v in METRIC_DESCRIPTIONS.items():
 
 ### Session isolation
 
-Every `run_local_evals.py` / `run_langfuse_eval.py` invocation:
+Every `run_evals.py` invocation:
 1. Deletes `sessions/eval_user/` (removes any file-backed state from previous runs)
 2. Creates each case in a fresh in-memory `JSONSessionManager` (no cross-case contamination)
-3. Tags all Langfuse traces with `user_id="eval_user"` and `session_id="eval_user"` so eval
-   traffic is visually separated from real users in the Langfuse dashboard
+3. Tags all Langfuse traces with `user_id="eval_user"` and `session_id="<run_name>/<case_id>"` so eval
+   traffic is visually separated from real users in the Langfuse dashboard and each case has its own trace group
 
 ### Result files
 

@@ -87,11 +87,19 @@ class Preferences(BaseModel):
     location_name: str = ""
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    # Eval-only: fixed "current time" as HH:MM. When set, the agent and scheduler
+    # use this instead of datetime.now(), making eval results time-independent.
+    current_time: Optional[str] = None
 
     @field_validator("work_start", "work_end", mode="before")
     @classmethod
     def validate_time_field(cls, v: str) -> str:
         return _validate_hhmm(v)  # type: ignore[return-value]
+
+    @field_validator("current_time", mode="before")
+    @classmethod
+    def validate_current_time(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_hhmm(v)
 
     @field_validator("timezone")
     @classmethod

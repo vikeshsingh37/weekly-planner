@@ -56,6 +56,7 @@ class WeeklyPlannerAgent:
         tools: AbstractToolRunner,
         on_event: Callable[..., None] | None = None,
         user_id: str | None = None,
+        session_id: str | None = None,
     ):
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -67,6 +68,7 @@ class WeeklyPlannerAgent:
         self._tools = tools
         self._on_event: Callable[..., None] = on_event or (lambda *_: None)
         self._user_id = user_id
+        self._session_id = session_id or user_id
 
     @observe()
     def chat(self, user_message: str) -> str:
@@ -74,7 +76,7 @@ class WeeklyPlannerAgent:
         if self._user_id:
             langfuse_context.update_current_trace(
                 user_id=self._user_id,
-                session_id=self._user_id,
+                session_id=self._session_id,
             )
         self._session.reload()
         self._session.add_message("user", user_message)
@@ -87,15 +89,20 @@ class WeeklyPlannerAgent:
 
     def _build_system_prompt(self) -> str:
         prefs = self._session.state.preferences
-        try:
-            tz = ZoneInfo(prefs.timezone)
-            now = datetime.now(tz)
-            time_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
-            tz_label = prefs.timezone
-        except (ZoneInfoNotFoundError, KeyError, Exception):
-            now = datetime.now()
-            time_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
-            tz_label = "local"
+        if prefs.current_time:
+            # Eval mode: use the fixed simulated time rather than datetime.now().
+            time_str = f"{prefs.date} at {prefs.current_time}"
+            tz_label = prefs.timezone or "local"
+        else:
+            try:
+                tz = ZoneInfo(prefs.timezone)
+                now = datetime.now(tz)
+                time_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
+                tz_label = prefs.timezone
+            except (ZoneInfoNotFoundError, KeyError, Exception):
+                now = datetime.now()
+                time_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
+                tz_label = "local"
         return (
             SYSTEM_PROMPT
             + f"\n\nCurrent date/time ({tz_label}): {time_str}. "
@@ -187,8 +194,9 @@ class WeeklyPlannerAgent:
     @observe(as_type="tool")
     def _run_tool(self, name: str, inputs: dict) -> dict:
         """Execute one tool call — traced as a Langfuse tool span."""
-        langfuse_context.update_current_observation(name=f"tool:{name}")
+        langfuse_context.update_current_observation(name=f"tool:{name}", input=inputs)
         self._on_event("tool_start", name, inputs)
         result = self._tools.run(name, inputs, self._session)
+        langfuse_context.update_current_observation(output=result)
         self._on_event("tool_end", name, result)
         return result
