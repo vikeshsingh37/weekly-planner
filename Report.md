@@ -401,6 +401,9 @@ uv run python eval_data/visualize.py --compare eval_results/before.json eval_res
 ---
 
 ## Below shows how the app looks like in action.
+
+Take a look at [Demo video](https://drive.google.com/file/d/1U6rMex61E-81EcrJDbdlqA8BhlyL4_JA/view?usp=sharing)
+
 ### Chat UI
 
 ![chat UI](report_images/chatUI.png)
