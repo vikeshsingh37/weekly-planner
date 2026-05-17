@@ -134,6 +134,10 @@ class ToolRunner(AbstractToolRunner):
     @staticmethod
     def _compute_now_min(prefs) -> int | None:
         """Return current minute-of-day in user's timezone, or None if not planning for today."""
+        if prefs.current_time:
+            # Eval mode: use the fixed simulated time so scheduler output is deterministic.
+            h, m = map(int, prefs.current_time.split(":"))
+            return h * 60 + m
         try:
             tz = ZoneInfo(prefs.timezone)
             now = datetime.now(tz)

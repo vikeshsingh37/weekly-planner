@@ -97,9 +97,9 @@ def datapoint_to_item(dp) -> tuple[dict, dict, dict]:
         "id": dp.id,
         "category": dp.category,
         "description": dp.description,
-        "metrics": dp.metrics,
         "notes": dp.notes,
-        "turn_count": len(dp.turns),
+        "num_turns": dp.num_turns,
+        "is_multi_turn": dp.is_multi_turn,
     }
 
     return input_, expected_output, metadata
@@ -126,7 +126,6 @@ def main() -> None:
     if args.dry_run:
         logger.info("DRY RUN — would push %d items to dataset %r", len(ALL_DATAPOINTS), args.dataset)
         for dp in ALL_DATAPOINTS:
-            inp, exp, meta = datapoint_to_item(dp)
             logger.info("  [%s] %s  turns=%d  tools=%d  checks=%d",
                         dp.category, dp.id, len(dp.turns),
                         len(dp.expected_tool_calls), len(dp.session_checks))

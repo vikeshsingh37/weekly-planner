@@ -8,6 +8,7 @@ AI agent that schedules your week from natural language. Tell it what you need t
 
 **1. Install**
 ```bash
+pip install uv
 uv sync
 ```
 
@@ -85,8 +86,7 @@ Things you can ask:
 ```
 server.py               FastAPI server — auth endpoints, REST API, WebSocket
 cli.py                  Interactive CLI (same agent, no browser needed)
-run_local_evals.py      Offline eval runner — no Langfuse / OpenAI needed, CI-friendly
-run_langfuse_eval.py    Full eval runner — scores all metrics and pushes results to Langfuse
+run_evals.py            Full eval runner — scores all metrics and pushes results to Langfuse
 static/index.html       Single-file web UI — login screen + chat + 24-hour calendar + debug trace
 api/                    Abstract interfaces (Scheduler, SessionManager, ToolRunner) + Pydantic models
 impl/
@@ -99,17 +99,15 @@ impl/
 agent/
   agent.py              Agentic loop — calls Claude, executes tools in parallel, streams events
   config.py             Agent config — model, token limits, temperature, thinking settings
-  system_prompt.txt     Agent instructions (edit freely)
+  system_prompt.txt     Agent instructions — 13 guidelines covering tool sequencing, scheduling rules, and idempotency (no re-adding or re-scheduling tasks already in session)
 evals/
-  config.py             Eval config — judge model, pass thresholds, dataset name, shared paths
-  eval_data.py          EvalCase definitions used by the local runner
-  eval_runner.py        Local runner logic — isolated sessions, check assertions
+  config.py             Eval config — judge model, pass thresholds, dataset name, EVAL_DEFAULT_PREFERENCES
   llm_judge.py          LLM-as-judge prompts for faithfulness / helpfulness / failure_explanation
   push_to_langfuse.py   Upserts the dataset to Langfuse (run once, or after dataset changes)
 eval_data/
   dataset.py            25 EvalDatapoint definitions with tool-call and session-state expectations
   schemas.py            EvalDatapoint, ExpectedToolCall, AnswerCheck dataclasses
-  metrics.py            TSA / TPA / SSA / AKR / AF / GFR scoring logic (deterministic)
+  metrics.py            TSA / TPA / SSA scoring logic (deterministic)
   visualize.py          CLI table for comparing eval runs
 tests/
   test_scheduler.py     EDF scheduler — helpers, scheduling, deadlines, pinned tasks, chunking, conflicts
@@ -158,7 +156,7 @@ uv run pytest tests/test_scheduler.py   # single file
 
 ## Observability (Langfuse)
 
-Every Claude API call and tool execution is traced as a Langfuse span — the local Docker stack is set up in step 2 of Get started above.
+Every Claude API call and tool execution is traced as a Langfuse span — the local Docker stack is set up in step 2 of Get started above. Each tool span explicitly records the tool input parameters and output result, so you can inspect exactly what was passed and returned for every `parse_and_add_tasks`, `schedule_tasks`, `move_task`, etc. call.
 
 **Using Langfuse Cloud instead of Docker:** swap the host and use your cloud project keys:
 ```env
@@ -171,28 +169,26 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 
 ## Evals
 
-25 hand-crafted cases across 5 categories. One runner — `run_langfuse_eval.py` — scores all metrics and pushes results to Langfuse.
+25 hand-crafted cases across 4 categories. One runner — `run_evals.py` — scores all metrics and pushes results to Langfuse.
 
 ```bash
 # Push dataset to Langfuse once (or after dataset changes)
 uv run python evals/push_to_langfuse.py
 
 # Run evals — one LLM call per case, all metrics scored and pushed to Langfuse
-uv run python run_langfuse_eval.py
-uv run python run_langfuse_eval.py --run-name sprint-12
-uv run python run_langfuse_eval.py --dataset weekly-planner-v2
-
-# Quick local sanity check (no Langfuse / OpenAI needed)
-uv run python run_local_evals.py
+uv run python run_evals.py
+uv run python run_evals.py --run-name sprint-12
+uv run python run_evals.py --dataset weekly-planner-v2
 ```
 
 | Category | Cases | What it tests |
 |----------|-------|---------------|
-| `tool_selection` | 7 | Correct tool chosen for each intent |
-| `tool_params` | 6 | Correct arguments extracted from natural language |
-| `multi_turn` | 5 | State coherence across 2–5 turns |
-| `final_answer` | 4 | Response text faithfully reflects tool outputs |
-| `edge_case` | 3 | Graceful handling of impossible / ambiguous inputs |
+| `tool_selection` | 9 | Correct tool chosen for each intent (includes multi-turn sequences) |
+| `tool_params` | 7 | Correct arguments extracted from natural language |
+| `final_answer` | 5 | Response text faithfully reflects tool outputs |
+| `edge_case` | 4 | Graceful handling of impossible / ambiguous inputs |
+
+13 of the 25 cases have more than one turn. Use `EvalDatapoint.is_multi_turn` to slice results by conversation length independently of category.
 
 **Metrics scored per case:**
 
@@ -205,7 +201,7 @@ uv run python run_local_evals.py
 | LLM-as-judge | helpfulness | Response is clear and actionable |
 | LLM-as-judge | failure_explanation | For edge cases: explains *why*, not just "sorry" |
 
-The LLM-as-judge model and pass thresholds are configured in `evals/config.py`.
+The LLM-as-judge model and pass thresholds are configured in `evals/config.py`. That file also defines `EVAL_DEFAULT_PREFERENCES` — a baseline applied to every eval session (`current_time="08:00"`, 24-hour work window, Bengaluru timezone and location) so eval results are time-independent and weather tests never fail due to missing location.
 
 See [`eval_data/README.md`](eval_data/README.md) for full dataset documentation.
 

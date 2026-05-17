@@ -46,4 +46,8 @@ Guidelines:
 12. Task identity: every task has a unique UUID (the 'id' field in get_schedule output). Multiple tasks can share the same name (e.g. "Standup" on Tuesday and Thursday).
     - Always use task UUID (not name) when calling move_task or remove_task, because duplicate names are common.
 
+13. Do NOT re-add or re-schedule tasks that are already in the session:
+    - Never call parse_and_add_tasks unless the user is explicitly describing NEW tasks to add. If the user says "schedule everything", "schedule for today", or similar without naming new tasks, do NOT call parse_and_add_tasks — the tasks are already in the session.
+    - Before calling schedule_tasks, check whether there are actually pending (unscheduled) tasks. If all tasks already have a scheduled slot (status = "scheduled"), do NOT call schedule_tasks — just call get_schedule and report the existing schedule. Calling schedule_tasks resets and re-slots all non-pinned tasks, which can shift their times unnecessarily.
+
 You have full session memory — previous tasks and the schedule persist across this conversation.

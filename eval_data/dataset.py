@@ -1,18 +1,30 @@
 """
 25-case eval dataset for the Weekly Planner agent.
 
-Categories
-──────────
-  tool_selection  (7)  Was the right tool called on the right turn?
-  tool_params     (6)  Were the right arguments extracted from natural language?
-  multi_turn      (5)  Does the agent maintain correct state across N turns?
-  final_answer    (4)  Does the response text faithfully reflect tool outputs?
-  edge_case       (3)  Graceful handling of impossible / ambiguous inputs.
+Categories (primary test focus)
+────────────────────────────────
+  tool_selection  (9)  Was the correct tool called on the correct turn?
+                       Includes multi-turn sequences where tool choice is the
+                       key signal (e.g. move_task vs schedule_tasks, remove then
+                       reschedule).
+  tool_params     (7)  Were arguments extracted correctly from natural language?
+                       Includes cases where preference params must flow through
+                       to a subsequent scheduling call.
+  final_answer    (5)  Does the agent's response faithfully reflect tool outputs
+                       and remain coherent over a full conversation?
+  edge_case       (4)  Graceful handling of impossible / ambiguous inputs,
+                       including errors that must not corrupt session state.
 
-Coverage
-────────
-  Single-turn:  ts_01–07, tp_01–06, ec_01–03          (16 cases)
-  Multi-turn :  mt_01–05, fa_01–04 + ts_02/03/04/05   (12 cases contain ≥2 turns)
+  The former "multi_turn" category has been dissolved — each of those cases now
+  lives in the category that best describes what it tests.  Use
+  EvalDatapoint.is_multi_turn (len(turns) > 1) to slice results by conversation
+  length independently of category.
+
+Conversation length
+───────────────────
+  Single-turn (1 turn) : ts_01, ts_05–07, tp_01–04, tp_06, fa_02–03, ec_02–03  (12 cases)
+  Multi-turn  (≥2 turns): ts_02–04, tp_05, mt_01–05, fa_01, fa_04, ec_01       (13 cases)
+  Max turns: 5 (mt_05)
 """
 
 from __future__ import annotations
@@ -31,9 +43,11 @@ TODAY: str = datetime.date.today().isoformat()
 TOMORROW: str = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
 
 
-# ── TOOL SELECTION (ts_) ────────────────────────────────────────────────────────
-# These cases verify that the agent picks the *right tool* for a given intent.
-# They do not deeply test parameter values — that's tp_*.
+# ── TOOL SELECTION (ts_, mt_01, mt_02) ──────────────────────────────────────────
+# Verifies that the agent picks the *right tool* for a given intent, including
+# across multiple turns where the correct sequence matters (e.g. move_task vs
+# re-scheduling, or remove_task followed by schedule_tasks).
+# Parameter values are not deeply tested here — that's tp_*.
 
 TS_01 = EvalDatapoint(
     id="ts_01",
@@ -63,7 +77,6 @@ TS_01 = EvalDatapoint(
             lambda s: any("gym" in t.name.lower() for t in s.state.tasks),
         )
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "answer_keyword_recall", "session_state_accuracy"],
     notes="Baseline single-turn add. Add intent must NOT trigger schedule_tasks automatically.",
 )
 
@@ -77,7 +90,7 @@ TS_02 = EvalDatapoint(
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=1),
+        ExpectedToolCall(tool="schedule_tasks", turn_index=0),
     ],
     session_checks=[
         SessionCheck(
@@ -85,7 +98,7 @@ TS_02 = EvalDatapoint(
             lambda s: sum(1 for t in s.state.tasks if t.status == "scheduled") >= 2,
         )
     ],
-    metrics=["tool_selection_accuracy", "session_state_accuracy"],
+    current_time="09:00",
     notes="Agent must not auto-schedule on add; schedule_tasks fires only on explicit request.",
 )
 
@@ -95,15 +108,13 @@ TS_03 = EvalDatapoint(
     description="Move a task to a specific time: agent should call move_task (not schedule_tasks)",
     turns=[
         "Add standup (30 min, priority 3).",
-        "Schedule it.",
         "Move standup to 2pm.",
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=1),
         ExpectedToolCall(
             tool="move_task",
-            turn_index=2,
+            turn_index=1,
             param_checks=[
                 ParamCheck("new_start_time", "eq", "14:00", "2pm → 14:00"),
                 ParamCheck("task_name", "contains", "standup", "task_name references standup"),
@@ -119,7 +130,7 @@ TS_03 = EvalDatapoint(
             ),
         )
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "session_state_accuracy"],
+    current_time="09:00",
     notes="Move intent must pick move_task, not reschedule via schedule_tasks. Tests 12h→24h time parsing.",
 )
 
@@ -130,12 +141,13 @@ TS_04 = EvalDatapoint(
     turns=[
         "Add yoga (1h, priority 2).",
         "Actually, cancel yoga — remove it from my schedule.",
+        "Yes"
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
         ExpectedToolCall(
             tool="remove_task",
-            turn_index=1,
+            turn_index=2,
             param_checks=[
                 ParamCheck("task_name", "contains", "yoga", "task_name references yoga"),
             ],
@@ -147,7 +159,6 @@ TS_04 = EvalDatapoint(
             lambda s: not any("yoga" in t.name.lower() for t in s.state.tasks),
         )
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "session_state_accuracy"],
     notes="Delete intent ('cancel', 'remove') must route to remove_task, not move_task.",
 )
 
@@ -169,7 +180,6 @@ TS_05 = EvalDatapoint(
     session_checks=[
         SessionCheck("Session remains empty", lambda s: len(s.state.tasks) == 0),
     ],
-    metrics=["tool_selection_accuracy", "answer_keyword_recall", "graceful_failure_rate"],
     notes="Empty schedule must not crash or hallucinate tasks. Agent must call get_schedule, not return from memory.",
 )
 
@@ -198,7 +208,6 @@ TS_06 = EvalDatapoint(
             lambda s: s.state.preferences.work_end == "18:00",
         ),
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "session_state_accuracy"],
     notes="Preference update intent. Verifies 12h→24h conversion for both boundaries.",
 )
 
@@ -206,7 +215,7 @@ TS_07 = EvalDatapoint(
     id="ts_07",
     category="tool_selection",
     description="Outdoor activity: agent should proactively call get_weather before answering",
-    turns=["I want to go for a run today. What's the best time based on the weather?"],
+    turns=["I want to go for a run today. I live in Bengaluru, India. What's the best time based on the weather?"],
     expected_tool_calls=[
         ExpectedToolCall(
             tool="get_weather",
@@ -223,7 +232,6 @@ TS_07 = EvalDatapoint(
             description="response references actual weather conditions from the forecast",
         )
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "answer_keyword_recall"],
     notes=(
         "Agent must proactively fetch weather for outdoor activities (run, cycle, walk, garden). "
         "If location is not set, agent may ask for it — that's acceptable."
@@ -231,8 +239,10 @@ TS_07 = EvalDatapoint(
 )
 
 
-# ── TOOL PARAMETERS (tp_) ────────────────────────────────────────────────────────
-# These cases stress-test natural language → tool argument extraction.
+# ── TOOL PARAMETERS (tp_, mt_03) ────────────────────────────────────────────────
+# Stress-tests natural language → tool argument extraction, including cases where
+# parameters set in one turn (e.g. updated preferences) must flow correctly into
+# tool calls made in a subsequent turn.
 
 TP_01 = EvalDatapoint(
     id="tp_01",
@@ -255,7 +265,6 @@ TP_01 = EvalDatapoint(
             lambda s: any(t.duration_minutes == 150 for t in s.state.tasks),
         )
     ],
-    metrics=["tool_param_accuracy", "session_state_accuracy"],
     notes="Common parsing failure: 2.5h → 2 min, 25 min, or 250 min. Must be exactly 150.",
 )
 
@@ -280,7 +289,6 @@ TP_02 = EvalDatapoint(
             lambda s: any(t.priority == 5 for t in s.state.tasks),
         )
     ],
-    metrics=["tool_param_accuracy", "session_state_accuracy"],
     notes="Agent must map 'critical'/'top priority' to 5, not 3 or 4. Borderline: 'urgent' → 4 or 5 are both acceptable.",
 )
 
@@ -305,7 +313,6 @@ TP_03 = EvalDatapoint(
             lambda s: any(t.deadline == "12:00" for t in s.state.tasks),
         )
     ],
-    metrics=["tool_param_accuracy", "session_state_accuracy"],
     notes="'Noon', '12pm', and '12:00' should all produce deadline='12:00'. Also tests fractional hours (90 min).",
 )
 
@@ -335,7 +342,6 @@ TP_04 = EvalDatapoint(
     session_checks=[
         SessionCheck("3 tasks in session", lambda s: len(s.state.tasks) >= 3),
     ],
-    metrics=["tool_param_accuracy", "session_state_accuracy"],
     notes=(
         "Bulk extraction. Array ordering must match input order. "
         "Failure mode: tasks merged, durations swapped, or deadline missed."
@@ -347,16 +353,14 @@ TP_05 = EvalDatapoint(
     category="tool_params",
     description="Move to tomorrow at a specific time: move_task must include both new_start_time AND date",
     turns=[
-        "Add: team planning (1h).",
-        "Schedule it.",
+        "Add: team planning (1h) at 1 pm today.",
         "Move team planning to tomorrow at 3pm.",
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=1),
         ExpectedToolCall(
             tool="move_task",
-            turn_index=2,
+            turn_index=1,
             param_checks=[
                 ParamCheck("new_start_time", "eq", "15:00", "3pm → 15:00"),
                 ParamCheck("date", "eq", TOMORROW, f"'tomorrow' → {TOMORROW}"),
@@ -373,7 +377,6 @@ TP_05 = EvalDatapoint(
             ),
         )
     ],
-    metrics=["tool_param_accuracy", "session_state_accuracy"],
     notes=(
         "Cross-day move: agent must pass BOTH new_start_time='15:00' AND date=TOMORROW. "
         "Omitting date leaves the task on today — a silent correctness bug."
@@ -400,7 +403,6 @@ TP_06 = EvalDatapoint(
             lambda s: s.state.preferences.timezone == "Asia/Tokyo",
         )
     ],
-    metrics=["tool_param_accuracy", "session_state_accuracy"],
     notes=(
         "Must produce a valid IANA name ('Asia/Tokyo'), not a display name like "
         "'Japan Standard Time'. Also tests that other prefs are untouched."
@@ -408,24 +410,25 @@ TP_06 = EvalDatapoint(
 )
 
 
-# ── MULTI-TURN (mt_) ─────────────────────────────────────────────────────────────
-# State must be consistent and correctly updated across every turn.
+# ── MULTI-TURN cases (mt_) — now distributed across categories ───────────────────
+# mt_01, mt_02 → tool_selection  (correct tool sequence across turns)
+# mt_03        → tool_params     (preference params flow to later scheduling call)
+# mt_04        → edge_case       (graceful error without session corruption)
+# mt_05        → final_answer    (4-turn end-to-end coherence and response quality)
 
 MT_01 = EvalDatapoint(
     id="mt_01",
-    category="multi_turn",
-    description="3-turn flow: add tasks → schedule → move one; other task must be unaffected",
+    category="tool_selection",
+    description="3-turn flow: add → schedule → move one; move_task must be chosen (not reschedule), other task unaffected",
     turns=[
         "Add: code review (1h, priority 4) and testing (45 min, priority 3).",
-        "Schedule both.",
         "Move testing to 3pm.",
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=1),
         ExpectedToolCall(
             tool="move_task",
-            turn_index=2,
+            turn_index=1,
             param_checks=[
                 ParamCheck("new_start_time", "eq", "15:00", "3pm → 15:00"),
                 ParamCheck("task_name", "contains", "testing", "targets testing"),
@@ -448,30 +451,30 @@ MT_01 = EvalDatapoint(
             ),
         ),
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "session_state_accuracy"],
+    current_time="09:00",
     notes="Moving one task must not evict or corrupt the other. Key regression: move wipes the full task list.",
 )
 
 MT_02 = EvalDatapoint(
     id="mt_02",
-    category="multi_turn",
-    description="Add → remove one task → reschedule remaining; removed task must not reappear",
+    category="tool_selection",
+    description="Add → remove one task → reschedule remaining; remove_task then schedule_tasks must be chosen in sequence",
     turns=[
-        "Add: meeting (1h), lunch (45 min), exercise (1h). Schedule all.",
+        "Add: meeting (1h), lunch (45 min), gym exercise (1h).",
         "Remove lunch.",
+        "Yes",
         "Reschedule everything.",
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=0),   # agent may inline both
         ExpectedToolCall(
             tool="remove_task",
-            turn_index=1,
+            turn_index=2,
             param_checks=[
                 ParamCheck("task_name", "contains", "lunch", "targets lunch"),
             ],
         ),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=2),
+        ExpectedToolCall(tool="get_schedule", turn_index=3),
     ],
     session_checks=[
         SessionCheck(
@@ -487,14 +490,14 @@ MT_02 = EvalDatapoint(
             ),
         ),
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "session_state_accuracy"],
+    current_time="09:00",
     notes="Remove must not cascade. Reschedule on turn 3 must pick up the correct two-task set.",
 )
 
 MT_03 = EvalDatapoint(
     id="mt_03",
-    category="multi_turn",
-    description="Preference change on turn 1 must affect scheduling on turn 2",
+    category="tool_params",
+    description="Preference change on turn 1 must propagate correct params to schedule_tasks on turn 2",
     turns=[
         "Set my work hours to 10:00 am to 2:00 pm.",
         "Add: analysis (2h) and report writing (1h). Schedule both.",
@@ -512,6 +515,7 @@ MT_03 = EvalDatapoint(
         ExpectedToolCall(tool="schedule_tasks", turn_index=1),
     ],
     preferences={"work_start": "09:00", "work_end": "17:00"},
+    current_time="09:00",
     session_checks=[
         SessionCheck(
             "work_start updated to 10:00",
@@ -534,16 +538,15 @@ MT_03 = EvalDatapoint(
             ),
         ),
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "session_state_accuracy"],
     notes="Multi-turn state coupling: preferences saved in turn 1 must be read by scheduler in turn 2.",
 )
 
 MT_04 = EvalDatapoint(
     id="mt_04",
-    category="multi_turn",
+    category="edge_case",
     description="Move a task that doesn't exist: agent should flag it without corrupting session",
     turns=[
-        "Add: deep work (2h, priority 5). Schedule.",
+        "Add: deep work (2h, priority 5).",
         "Move 'standup' to 11am.",  # standup was never added
     ],
     expected_tool_calls=[
@@ -563,29 +566,26 @@ MT_04 = EvalDatapoint(
             lambda s: any("deep work" in t.name.lower() for t in s.state.tasks),
         )
     ],
-    metrics=["answer_keyword_recall", "graceful_failure_rate", "session_state_accuracy"],
     notes="remove_task / move_task should return a clear error; agent must relay it, not silently succeed.",
 )
 
 MT_05 = EvalDatapoint(
     id="mt_05",
-    category="multi_turn",
-    description="5-turn conversation: add, status check, add more, schedule, move — full coherence test",
+    category="final_answer",
+    description="4-turn conversation: add, status check, add more, schedule, move — full end-to-end coherence",
     turns=[
         "Add: email replies (30 min) and team sync (1h).",
         "What tasks do I have so far?",
         "Also add: documentation (2h, priority 4).",
-        "Schedule everything.",
         "Move email replies to 9am.",
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
         ExpectedToolCall(tool="get_schedule", turn_index=1),
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=2),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=3),
         ExpectedToolCall(
             tool="move_task",
-            turn_index=4,
+            turn_index=3,
             param_checks=[
                 ParamCheck("new_start_time", "eq", "09:00", "9am → 09:00"),
                 ParamCheck("task_name", "contains", "email", "targets email replies"),
@@ -609,13 +609,17 @@ MT_05 = EvalDatapoint(
             lambda s: sum(1 for t in s.state.tasks if t.status == "scheduled") == 3,
         ),
     ],
-    metrics=["tool_selection_accuracy", "tool_param_accuracy", "session_state_accuracy"],
-    notes="Longest conversation in the dataset. State from turn 0 must remain correct through turn 4.",
+    current_time="08:00",
+    notes=(
+        "Longest conversation in the dataset. State from turn 0 must remain correct through turn 4. "
+        "current_time=08:00 so the 9am pin on turn 4 is always in the future."
+    ),
 )
 
 
-# ── FINAL ANSWER (fa_) ─────────────────────────────────────────────────────────
-# Correctness and faithfulness of the agent's text output.
+# ── FINAL ANSWER (fa_, mt_05) ──────────────────────────────────────────────────
+# Correctness and faithfulness of the agent's text output, including end-to-end
+# coherence across a full multi-turn conversation (mt_05).
 
 FA_01 = EvalDatapoint(
     id="fa_01",
@@ -623,13 +627,12 @@ FA_01 = EvalDatapoint(
     description="Schedule output must use 12h AM/PM format as specified in the system prompt",
     turns=[
         "Add: morning stand-up (30 min) and deep focus (2h).",
-        "Schedule them.",
         "Show me the full schedule.",
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=1),
-        ExpectedToolCall(tool="get_schedule", turn_index=2),
+        ExpectedToolCall(tool="schedule_tasks", turn_index=0),
+        ExpectedToolCall(tool="get_schedule", turn_index=1),
     ],
     answer_checks=[
         AnswerCheck(
@@ -639,7 +642,7 @@ FA_01 = EvalDatapoint(
             description="response uses 12h AM/PM, not bare 24h HH:MM",
         )
     ],
-    metrics=["tool_selection_accuracy", "answer_keyword_recall"],
+    current_time="09:00",
     notes="System prompt requires 12h output. Regression: agent reverts to 24h after a model update.",
 )
 
@@ -662,7 +665,7 @@ FA_02 = EvalDatapoint(
             lambda s: any(t.status == "unschedulable" for t in s.state.tasks),
         )
     ],
-    metrics=["answer_keyword_recall", "graceful_failure_rate", "session_state_accuracy"],
+    current_time="09:00",
     notes="Agent must not silently drop tasks. User must be told which specific tasks were left out.",
 )
 
@@ -688,7 +691,7 @@ FA_03 = EvalDatapoint(
             ),
         )
     ],
-    metrics=["answer_keyword_recall", "graceful_failure_rate", "session_state_accuracy"],
+    current_time="09:00",
     notes=(
         "6h task starting at 09:00 finishes at 15:00 — 4h past the 11:00 deadline. "
         "Response must explain the WHY, not just say 'unschedulable'."
@@ -700,16 +703,14 @@ FA_04 = EvalDatapoint(
     category="final_answer",
     description="Move confirmation: response must state the correct new time (2:30 PM)",
     turns=[
-        "Add: product demo (1h).",
-        "Schedule it.",
+        "Add: product demo (1h) now.",
         "Move the product demo to 2:30pm.",
     ],
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=1),
         ExpectedToolCall(
             tool="move_task",
-            turn_index=2,
+            turn_index=1,
             param_checks=[
                 ParamCheck("new_start_time", "eq", "14:30", "2:30pm → 14:30"),
                 ParamCheck("task_name", "contains", "demo", "targets product demo"),
@@ -732,13 +733,14 @@ FA_04 = EvalDatapoint(
             ),
         )
     ],
-    metrics=["tool_param_accuracy", "answer_keyword_recall", "session_state_accuracy"],
+    current_time="09:00",
     notes="Tests both correct param extraction (14:30) AND that the confirmation echoes the actual time.",
 )
 
 
-# ── EDGE CASES (ec_) ──────────────────────────────────────────────────────────
-# Unusual or adversarial inputs the agent must handle gracefully.
+# ── EDGE CASES (ec_, mt_04) ───────────────────────────────────────────────────
+# Unusual or adversarial inputs the agent must handle gracefully, including
+# errors that must not corrupt session state (mt_04).
 
 EC_01 = EvalDatapoint(
     id="ec_01",
@@ -751,7 +753,7 @@ EC_01 = EvalDatapoint(
     preferences={"work_start": "09:00", "work_end": "18:00", "max_chunk_minutes": 90},
     expected_tool_calls=[
         ExpectedToolCall(tool="parse_and_add_tasks", turn_index=0),
-        ExpectedToolCall(tool="schedule_tasks", turn_index=1),
+        ExpectedToolCall(tool="get_schedule", turn_index=1),
     ],
     answer_checks=[
         AnswerCheck(
@@ -769,7 +771,7 @@ EC_01 = EvalDatapoint(
             ),
         )
     ],
-    metrics=["answer_keyword_recall", "session_state_accuracy"],
+    current_time="09:00",
     notes=(
         "EDFScheduler splits tasks > max_chunk_minutes into focus blocks. "
         "4h / 90min = ~3 blocks. Agent must communicate splitting, not just report one start time."
@@ -791,7 +793,6 @@ EC_02 = EvalDatapoint(
     session_checks=[
         SessionCheck("Session remains empty", lambda s: len(s.state.tasks) == 0),
     ],
-    metrics=["answer_keyword_recall", "graceful_failure_rate", "session_state_accuracy"],
     notes=(
         "remove_task tool returns an error for unknown task names. "
         "Agent must surface the error — not silently succeed or add a placeholder."
@@ -824,9 +825,10 @@ EC_03 = EvalDatapoint(
             ),
         )
     ],
-    metrics=["answer_keyword_recall", "graceful_failure_rate", "session_state_accuracy"],
+    current_time="09:00",
     notes=(
         "Mathematically impossible: 8h task starting at 09:00 ends at 17:00 — 7h after the 10:00 deadline. "
+        "current_time=09:00 ensures the agent reasons about the deadline math (not 'deadline has passed'). "
         "Stresses both scheduler correctness and agent communication quality."
     ),
 )
@@ -835,16 +837,14 @@ EC_03 = EvalDatapoint(
 # ── Full dataset ───────────────────────────────────────────────────────────────
 
 ALL_DATAPOINTS: list[EvalDatapoint] = [
-    # tool_selection (7)
-    TS_01, TS_02, TS_03, TS_04, TS_05, TS_06, TS_07,
-    # tool_params (6)
-    TP_01, TP_02, TP_03, TP_04, TP_05, TP_06,
-    # multi_turn (5)
-    MT_01, MT_02, MT_03, MT_04, MT_05,
-    # final_answer (4)
-    FA_01, FA_02, FA_03, FA_04,
-    # edge_case (3)
-    EC_01, EC_02, EC_03,
+    # tool_selection (9): ts_01–07 + mt_01–02
+    TS_01, TS_02, TS_03, TS_04, TS_05, TS_06, TS_07, MT_01, MT_02,
+    # tool_params (7): tp_01–06 + mt_03
+    TP_01, TP_02, TP_03, TP_04, TP_05, TP_06, MT_03,
+    # final_answer (5): fa_01–04 + mt_05
+    FA_01, FA_02, FA_03, FA_04, MT_05,
+    # edge_case (4): ec_01–03 + mt_04
+    EC_01, EC_02, EC_03, MT_04,
 ]
 
 assert len(ALL_DATAPOINTS) == 25, f"Expected 25 datapoints, got {len(ALL_DATAPOINTS)}"
