@@ -8,7 +8,7 @@ Results are printed to stdout and optionally written to a JSON file.
 import json
 import logging
 import os
-import sys
+import shutil
 import time
 import traceback
 from dataclasses import dataclass, asdict
@@ -17,9 +17,12 @@ from typing import List, Optional
 from agent.agent import WeeklyPlannerAgent
 from impl.memory import JSONSessionManager
 from impl.tools import ToolRunner
-from evals.test_cases import EvalCase, ALL_CASES
+from evals.eval_data import EvalCase, ALL_CASES
 
 logger = logging.getLogger(__name__)
+
+EVAL_USER_ID = "eval_user"
+_EVAL_SESSION_DIR = os.path.join("sessions", EVAL_USER_ID)
 
 
 @dataclass
@@ -41,11 +44,13 @@ class CaseResult:
 
 
 def run_case(case: EvalCase) -> CaseResult:
-    """Run one eval case in an isolated agent with a fresh session."""
+    """Run one eval case in an isolated in-memory session tagged as eval_user."""
     session = JSONSessionManager(session_file=None)
-    agent = WeeklyPlannerAgent(session=session, tools=ToolRunner())
+    agent = WeeklyPlannerAgent(session=session, tools=ToolRunner(), user_id=EVAL_USER_ID)
 
-    # Apply preference overrides if any
+    # Use a 24-hour window by default so evals are not time-of-day sensitive.
+    # Case-specific preferences override these defaults.
+    session.update_preferences({"work_start": "00:00", "work_end": "23:59"})
     if case.preferences:
         session.update_preferences(case.preferences)
 
@@ -99,6 +104,11 @@ def run_all(
     cases = cases or ALL_CASES
     if categories:
         cases = [c for c in cases if c.category in categories]
+
+    # Wipe any persisted file-backed session for eval_user so history never leaks between runs.
+    if os.path.isdir(_EVAL_SESSION_DIR):
+        shutil.rmtree(_EVAL_SESSION_DIR)
+        logger.debug("Cleared eval session dir: %s", _EVAL_SESSION_DIR)
 
     logger.info("\n%s", "=" * 60)
     logger.info("Weekly Planner Agent — Eval Suite")
