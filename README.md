@@ -71,7 +71,7 @@ Agent: Done — standup pinned at 10 AM, schedule adjusted around it.
 ```
 
 Things you can ask:
-- Add tasks for any day this week — *"add a 90-min planning session for Wednesday"*
+- Add tasks within a 7-day rolling window — *"add a 90-min planning session for Wednesday"*
 - Pin tasks to exact times — *"schedule standup on Tuesday and Thursday at 9:30 AM"*
 - Move or reschedule tasks — *"move the design doc to tomorrow afternoon"*
 - Remove tasks — agent asks for confirmation before deleting
