@@ -71,10 +71,14 @@ class ToolRunner(AbstractToolRunner):
         added, rejected = [], []
         for ti in validated.tasks:
             task_date = date.fromisoformat(ti.date) if ti.date else today
+            if task_date < today:
+                rejected.append(
+                    f"{ti.name} (date {ti.date} is in the past; tasks can only be added to today or a future date)"
+                )
+                continue
             if task_date > max_date:
                 rejected.append(
-                    f"{ti.name} (date {ti.date} is beyond the "
-                    f"{_MAX_PLANNING_DAYS}-day planning window; max allowed: {max_date})"
+                    f"{ti.name} (date {ti.date} is beyond the 7-day planning window; max allowed: {max_date})"
                 )
                 continue
             task = Task(**{**ti.model_dump(exclude={"start_time"}), "date": ti.date or base_date})
@@ -159,17 +163,15 @@ class ToolRunner(AbstractToolRunner):
         if task is None:
             return {"error": f"Task '{validated.task_id or validated.task_name}' not found."}
 
-        # Optionally change the task's date — enforce the same 7-day cap
+        # Optionally change the task's date — reject past dates and enforce 7-day cap
         if validated.date:
             today = date.today()
             max_date = today + timedelta(days=_MAX_PLANNING_DAYS - 1)
-            if date.fromisoformat(validated.date) > max_date:
-                return {
-                    "error": (
-                        f"Date {validated.date} is beyond the {_MAX_PLANNING_DAYS}-day "
-                        f"planning window (max allowed: {max_date})."
-                    )
-                }
+            task_date = date.fromisoformat(validated.date)
+            if task_date < today:
+                return {"error": f"Date {validated.date} is in the past; tasks can only be moved to today or a future date."}
+            if task_date > max_date:
+                return {"error": f"Date {validated.date} is beyond the 7-day planning window (max allowed: {max_date})."}
             task.date = validated.date
 
         start_min = _to_min(validated.new_start_time)

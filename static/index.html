@@ -258,6 +258,8 @@ textarea:disabled { opacity: .55; cursor: not-allowed; }
 
 .cal-day-col { flex: 1; position: relative; border-left: 1px solid var(--border); min-width: 0; }
 .cal-day-col.today { background: rgba(91,80,232,.018); }
+.cal-day-col.past  { background: rgba(0,0,0,.025); }
+.cal-day-hdr.past  { opacity: 0.55; }
 .cal-hour-rule { position: absolute; left: 0; right: 0; height: 1px; background: var(--border); opacity: .7; }
 
 .cal-task {
@@ -780,6 +782,11 @@ function logout() {
   localStorage.removeItem('dp_email');
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   conn.className = 'conn';
+  // Clear all user-specific UI state so the next user starts clean
+  thinkEl = null; stepEls = {}; stepLog = [];
+  _calViewOffset = 0;
+  _lastState = null;
+  msgs.innerHTML = '';
   showAuth();
 }
 
@@ -1006,39 +1013,34 @@ async function _autoDetectLocationOnce(prefs) {
 
 function navCalendar(dir) {
   if (dir === 0) { _calViewOffset = 0; }
-  else {
-    const step = (_lastState && _lastState.preferences.planning_days > 1)
-      ? _lastState.preferences.planning_days : 1;
-    _calViewOffset = Math.max(0, _calViewOffset + dir * step);
-  }
+  else { _calViewOffset += dir; }
   if (_lastState) renderCalendar(_lastState);
 }
 
 function renderCalendar(state) {
   _lastState = state;
   const prefs       = state.preferences;
-  const planDays    = Math.max(1, prefs.planning_days || 1);
   const wsMin       = toMin(prefs.work_start);
   const weMin       = toMin(prefs.work_end);
   const totalPx     = (CAL_DAY_END - CAL_DAY_START) * PX_PER_MIN;
   const todayStr    = new Date().toLocaleDateString('en-CA');
   const COLORS      = ['', '#94a3b8', '#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
 
-  const base = new Date(todayStr + 'T12:00:00');
-  base.setDate(base.getDate() + _calViewOffset);
+  // Compute Mon–Sun of the target week (_calViewOffset weeks from the current week)
+  const todayDate = new Date(todayStr + 'T12:00:00');
+  const jsDay = todayDate.getDay(); // 0=Sun, 1=Mon, …, 6=Sat
+  const daysToMonday = jsDay === 0 ? -6 : 1 - jsDay;
+  const monday = new Date(todayDate);
+  monday.setDate(todayDate.getDate() + daysToMonday + _calViewOffset * 7);
   const dates = [];
-  for (let i = 0; i < planDays; i++) {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
     dates.push(d.toLocaleDateString('en-CA'));
   }
 
   calTz.textContent = prefs.timezone || '';
-  if (planDays === 1) {
-    calDate.textContent = fmtDate(dates[0]);
-  } else {
-    calDate.textContent = fmtDateShort(dates[0]) + ' – ' + fmtDateShort(dates[dates.length - 1]);
-  }
+  calDate.textContent = fmtDateShort(dates[0]) + ' – ' + fmtDateShort(dates[6]);
 
   const calWeek = document.getElementById('cal-week');
   calWeek.innerHTML = '';
@@ -1052,7 +1054,7 @@ function renderCalendar(state) {
   for (const d of dates) {
     const dt = new Date(d + 'T12:00:00');
     const hdr = document.createElement('div');
-    hdr.className = 'cal-day-hdr' + (d === todayStr ? ' today' : '');
+    hdr.className = 'cal-day-hdr' + (d === todayStr ? ' today' : d < todayStr ? ' past' : '');
     hdr.innerHTML =
       `<div class="dh-name">${dt.toLocaleDateString(undefined,{weekday:'short'})}</div>` +
       `<div class="dh-num">${dt.getDate()}</div>`;
@@ -1084,7 +1086,7 @@ function renderCalendar(state) {
   // Day columns
   for (const dateStr of dates) {
     const col = document.createElement('div');
-    col.className = 'cal-day-col' + (dateStr === todayStr ? ' today' : '');
+    col.className = 'cal-day-col' + (dateStr === todayStr ? ' today' : dateStr < todayStr ? ' past' : '');
     col.style.height = totalPx + 'px';
 
     for (let m = CAL_DAY_START; m <= CAL_DAY_END; m += 60) {
@@ -1117,7 +1119,7 @@ function renderCalendar(state) {
     if (!dayTasks.length) {
       const empty = document.createElement('div');
       empty.className = 'cal-empty';
-      empty.textContent = planDays > 1 ? '—' : 'No tasks scheduled yet';
+      empty.textContent = '—';
       col.appendChild(empty);
     }
 
